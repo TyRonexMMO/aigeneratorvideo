@@ -8,6 +8,7 @@ import random
 import string
 from datetime import datetime, timedelta
 from functools import wraps
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "super_secret_admin_key_v2")
@@ -15,8 +16,15 @@ app.secret_key = os.environ.get("FLASK_SECRET", "super_secret_admin_key_v2")
 # --- CONFIGURATION ---
 DB_PATH = os.environ.get("DATABASE_PATH", "users.db")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
-# Secret Login Path (e.g. /secure_login)
 ADMIN_LOGIN_PATH = os.environ.get("ADMIN_PATH", "secure_login")
+UPLOAD_FOLDER = 'static/updates'
+ALLOWED_EXTENSIONS = {'py', 'exe', 'zip'}
+
+# Create upload folder if not exists
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # Security Config
 MAX_SUSPICIOUS_ATTEMPTS = 5
@@ -33,34 +41,29 @@ def get_db():
 def init_db():
     conn = get_db()
     c = conn.cursor()
-    # Users Table
     c.execute('''CREATE TABLE IF NOT EXISTS users
                  (username TEXT PRIMARY KEY, api_key TEXT, credits INTEGER, expiry_date TEXT, is_active INTEGER, created_at TEXT, plan TEXT DEFAULT 'Standard')''')
-    # Logs Table
     c.execute('''CREATE TABLE IF NOT EXISTS logs
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, action TEXT, cost INTEGER, timestamp TEXT)''')
-    # Settings Table
     c.execute('''CREATE TABLE IF NOT EXISTS settings
                  (key TEXT PRIMARY KEY, value TEXT)''')
-    # Vouchers Table
     c.execute('''CREATE TABLE IF NOT EXISTS vouchers
                  (code TEXT PRIMARY KEY, amount INTEGER, is_used INTEGER, created_at TEXT, used_by TEXT)''')
-    # Tasks Table
     c.execute('''CREATE TABLE IF NOT EXISTS tasks
                  (task_id TEXT PRIMARY KEY, username TEXT, cost INTEGER, status TEXT, created_at TEXT)''')
-    # Banned IPs Table
     c.execute('''CREATE TABLE IF NOT EXISTS banned_ips
                  (ip TEXT PRIMARY KEY, reason TEXT, banned_at TEXT)''')
 
-    # Default Settings
     defaults = {
         'sora_api_key': os.environ.get("SORA_API_KEY", "sk-DEFAULT"),
         'cost_sora_2': '25', 'cost_sora_2_pro': '35',
         'limit_mini': '1', 'limit_basic': '2', 'limit_standard': '3',
         'broadcast_msg': '',
-        'broadcast_color': '#FF0000', # Default Red
-        'latest_version': '1.0.0', # Default Version
-        'update_desc': 'Initial Release' # Default Description
+        'broadcast_color': '#FF0000',
+        'latest_version': '1.0.0',
+        'update_desc': 'Initial Release',
+        'update_is_live': '0',
+        'update_filename': ''
     }
     for k, v in defaults.items():
         try: c.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (k, v))
@@ -91,6 +94,9 @@ def get_client_ip():
         return request.headers.getlist("X-Forwarded-For")[0]
     return request.remote_addr
 
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 # --- SECURITY MIDDLEWARE (IRON DOME) ---
 @app.before_request
 def security_guard():
@@ -109,7 +115,6 @@ def security_guard():
     if request.path == f'/{ADMIN_LOGIN_PATH}' or any(request.path.startswith(p) for p in valid_starts) or request.path == '/':
         return 
 
-    # Suspicious Activity Tracker
     current_count = suspicious_tracker.get(ip, 0) + 1
     suspicious_tracker[ip] = current_count
     
@@ -162,6 +167,14 @@ MODERN_DASHBOARD_HTML = """
         ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* Switch Toggle */
+        .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .4s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #10b981; }
+        input:checked + .slider:before { transform: translateX(20px); }
     </style>
 </head>
 <body class="flex h-screen overflow-hidden bg-gray-50 text-slate-800">
@@ -380,20 +393,38 @@ MODERN_DASHBOARD_HTML = """
             
             <!-- Update System Config -->
             <div class="bg-gradient-to-r from-blue-600 to-cyan-500 rounded-2xl p-6 text-white shadow-xl shadow-blue-200 mb-8">
-                <h4 class="font-bold text-lg mb-2 flex items-center gap-2"><i class="fas fa-sync-alt"></i> ប្រព័ន្ធអាប់ដេតកម្មវិធី (App Updates)</h4>
-                <p class="text-white/80 text-sm mb-4">កំណត់កំណែថ្មី និងសារបង្ហាញទៅកាន់អ្នកប្រើប្រាស់។</p>
-                <form action="/update_settings" method="POST" class="space-y-4">
+                <h4 class="font-bold text-lg mb-4 flex items-center gap-2"><i class="fas fa-sync-alt"></i> ប្រព័ន្ធអាប់ដេតកម្មវិធី (App Updates)</h4>
+                
+                <form action="/update_settings" method="POST" enctype="multipart/form-data" class="space-y-4">
+                    <div class="flex items-center justify-between bg-white/10 p-4 rounded-lg backdrop-blur-sm border border-white/20">
+                        <div>
+                            <h5 class="font-bold text-white">Enable Update Notification</h5>
+                            <p class="text-xs text-white/70">បើកមុខងារនេះដើម្បីបង្ហាញផ្ទាំង Update ទៅកាន់អ្នកប្រើប្រាស់។</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" name="update_is_live" {% if update_is_live == '1' %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
                     <div class="flex gap-4">
                         <div class="w-1/3">
                             <label class="text-xs font-bold text-white/70 block mb-1">Latest Version</label>
                             <input type="text" name="latest_version" value="{{ latest_version }}" class="w-full bg-white/20 border border-white/30 rounded-lg px-3 py-2 text-white placeholder-white/60 focus:bg-white/30 outline-none backdrop-blur-sm" placeholder="Ex: 25.12.11">
                         </div>
+                        <div class="flex-1">
+                            <label class="text-xs font-bold text-white/70 block mb-1">Upload New File (.py / .exe)</label>
+                            <input type="file" name="update_file" class="w-full bg-white/20 border border-white/30 rounded-lg px-3 py-1.5 text-white text-sm focus:bg-white/30 outline-none backdrop-blur-sm file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-white file:text-blue-700 hover:file:bg-blue-50">
+                            {% if update_filename %}
+                            <p class="text-xs text-emerald-300 mt-1"><i class="fas fa-check-circle"></i> Current File: {{ update_filename }}</p>
+                            {% endif %}
+                        </div>
                     </div>
                     <div>
-                        <label class="text-xs font-bold text-white/70 block mb-1">Update Description (បង្ហាញលើផ្ទាំងអ្នកប្រើ)</label>
-                        <textarea name="update_desc" class="w-full bg-white/20 border border-white/30 rounded-lg px-3 py-2 text-white placeholder-white/60 focus:bg-white/30 outline-none backdrop-blur-sm h-24" placeholder="សរសេរអំពីអ្វីដែលថ្មី...">{{ update_desc }}</textarea>
+                        <label class="text-xs font-bold text-white/70 block mb-1">Update Description</label>
+                        <textarea name="update_desc" class="w-full bg-white/20 border border-white/30 rounded-lg px-3 py-2 text-white placeholder-white/60 focus:bg-white/30 outline-none backdrop-blur-sm h-20" placeholder="សរសេរអំពីអ្វីដែលថ្មី...">{{ update_desc }}</textarea>
                     </div>
-                    <button class="bg-white text-blue-600 font-bold px-6 py-2.5 rounded-lg hover:bg-blue-50 shadow-lg">Save Update Info</button>
+                    <button class="bg-white text-blue-600 font-bold px-6 py-2.5 rounded-lg hover:bg-blue-50 shadow-lg w-full">Save Update Settings</button>
                 </form>
             </div>
 
@@ -577,12 +608,15 @@ def settings():
     clr = get_setting('broadcast_color', '#FF0000') 
     latest_ver = get_setting('latest_version', '1.0.0')
     update_desc = get_setting('update_desc', 'Initial Release')
+    update_is_live = get_setting('update_is_live', '0')
+    update_filename = get_setting('update_filename', '')
     
     costs = {'sora_2': get_setting('cost_sora_2', 25), 'sora_2_pro': get_setting('cost_sora_2_pro', 35)}
     limits = {'mini': get_setting('limit_mini', 1), 'basic': get_setting('limit_basic', 2), 'standard': get_setting('limit_standard', 3)}
     
     return render_template_string(MODERN_DASHBOARD_HTML, page='settings', api_key=k, broadcast_msg=msg, broadcast_color=clr, 
-                                  costs=costs, limits=limits, latest_version=latest_ver, update_desc=update_desc)
+                                  costs=costs, limits=limits, latest_version=latest_ver, update_desc=update_desc,
+                                  update_is_live=update_is_live, update_filename=update_filename)
 
 # --- ACTION ROUTES ---
 @app.route('/add_user', methods=['POST'])
@@ -639,7 +673,37 @@ def generate_vouchers():
 @app.route('/update_settings', methods=['POST'])
 @login_required
 def update_settings():
-    for k,v in request.form.items(): set_setting(k, v)
+    # Handle normal settings
+    if 'latest_version' in request.form:
+        set_setting('latest_version', request.form.get('latest_version'))
+    if 'update_desc' in request.form:
+        set_setting('update_desc', request.form.get('update_desc'))
+    
+    # Handle Update Live Toggle (Checkbox sends 'on' if checked, else nothing)
+    is_live = '1' if request.form.get('update_is_live') else '0'
+    set_setting('update_is_live', is_live)
+
+    # Handle File Upload
+    if 'update_file' in request.files:
+        file = request.files['update_file']
+        if file and file.filename != '' and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            set_setting('update_filename', filename)
+
+    # Handle other general settings
+    if 'sora_api_key' in request.form:
+         set_setting('sora_api_key', request.form.get('sora_api_key'))
+    if 'cost_sora_2' in request.form:
+         set_setting('cost_sora_2', request.form.get('cost_sora_2'))
+    if 'cost_sora_2_pro' in request.form:
+         set_setting('cost_sora_2_pro', request.form.get('cost_sora_2_pro'))
+    
+    # Limits
+    if 'limit_mini' in request.form: set_setting('limit_mini', request.form.get('limit_mini'))
+    if 'limit_basic' in request.form: set_setting('limit_basic', request.form.get('limit_basic'))
+    if 'limit_standard' in request.form: set_setting('limit_standard', request.form.get('limit_standard'))
+
     return redirect('/settings')
 
 @app.route('/update_broadcast', methods=['POST'])
@@ -669,12 +733,19 @@ def verify_user():
     c.execute("SELECT credits, expiry_date, is_active, plan FROM users WHERE username=? AND api_key=?", (d.get('username'), d.get('api_key')))
     u = c.fetchone()
     
-    # Get all global settings to send to client
+    # Get Global Settings
     b = get_setting('broadcast_msg', '')
     bc = get_setting('broadcast_color', '#FF0000')
     lv = get_setting('latest_version', '1.0.0')
-    ud = get_setting('update_desc', 'Initial Release')
+    ud = get_setting('update_desc', 'Improvements')
+    live = get_setting('update_is_live', '0')
+    fname = get_setting('update_filename', '')
     
+    # Generate Download URL if file exists
+    dl_url = ""
+    if fname:
+        dl_url = f"{request.url_root}static/updates/{fname}"
+
     conn.close()
     
     if not u: return jsonify({"valid": False, "message": "Invalid Credentials"})
@@ -692,7 +763,9 @@ def verify_user():
         "broadcast": b, 
         "broadcast_color": bc,
         "latest_version": lv,
-        "update_desc": ud
+        "update_desc": ud,
+        "update_is_live": live == '1',
+        "download_url": dl_url
     })
 
 @app.route('/api/redeem', methods=['POST'])
