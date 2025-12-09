@@ -141,6 +141,8 @@ def get_db():
     return conn
 
 # --- ROUTES (ADMIN) ---
+
+# 1. Main Login Route (Home)
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -150,6 +152,11 @@ def login():
         else:
             return "Wrong Password"
     return render_template_string(LOGIN_HTML)
+
+# 2. Redirect /admin to / (NEW FIX)
+@app.route('/admin')
+def admin_redirect():
+    return redirect(url_for('login'))
 
 @app.route('/logout')
 def logout():
