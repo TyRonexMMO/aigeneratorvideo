@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template_string, redirect, url_for, session
+from flask import Flask, request, jsonify, render_template_string, redirect, url_for, session, send_file
 import requests
 import os
 import sqlite3
@@ -111,6 +111,7 @@ MODERN_DASHBOARD_HTML = """
         .btn { border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; transition: 0.2s; text-decoration: none; font-size: 13px; display: inline-flex; align-items: center; gap: 5px; }
         .btn-primary { background: var(--primary); color: white; }
         .btn-danger { background: #ffecec; color: #d63031; }
+        .btn-success { background: #00b894; color: white; }
         .btn-icon { background: transparent; color: #b2bec3; font-size: 16px; }
         .btn-icon:hover { color: var(--dark); }
         
@@ -120,7 +121,7 @@ MODERN_DASHBOARD_HTML = """
         .input-field:focus { border-color: var(--primary); background: white; }
         
         /* Settings Section */
-        .settings-box { background: var(--white); padding: 30px; border-radius: 15px; max-width: 600px; }
+        .settings-box { background: var(--white); padding: 30px; border-radius: 15px; max-width: 600px; margin-bottom: 20px; }
     </style>
 </head>
 <body>
@@ -230,7 +231,9 @@ MODERN_DASHBOARD_HTML = """
 
         {% elif page == 'settings' %}
         <div class="header"><div class="title">System Settings</div></div>
+        
         <div class="settings-box">
+            <h3>API Configuration</h3>
             <form action="/update_settings" method="POST">
                 <div class="input-group">
                     <label style="display:block; margin-bottom:10px; font-weight:600;">Real Sora API Key</label>
@@ -239,6 +242,12 @@ MODERN_DASHBOARD_HTML = """
                 </div>
                 <button type="submit" class="btn btn-primary">Save Changes</button>
             </form>
+        </div>
+
+        <div class="settings-box">
+            <h3>Data Management</h3>
+            <p>Download a backup of your user database to prevent data loss during updates.</p>
+            <a href="/download_db" class="btn btn-success"><i class="fas fa-download"></i> Download Database Backup</a>
         </div>
         {% endif %}
     </div>
@@ -338,6 +347,14 @@ def update_settings():
     conn.commit()
     conn.close()
     return redirect('/settings')
+
+# --- NEW: Download Database Route ---
+@app.route('/download_db')
+@login_required
+def download_db():
+    if os.path.exists(DB_PATH):
+        return send_file(DB_PATH, as_attachment=True)
+    return "Database not found."
 
 @app.route('/add_user', methods=['POST'])
 @login_required
