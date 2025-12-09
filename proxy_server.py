@@ -11,7 +11,7 @@ app.secret_key = "super_secret_admin_key" # Change this in production
 
 # --- CONFIGURATION ---
 # API Key របស់ Sora ពិតប្រាកដ (Admin ដាក់នៅទីនេះតែមួយគត់)
-REAL_SORA_API_KEY = os.environ.get("SORA_API_KEY", "sk-UbM4d88up8Tg1BrBYkz8rr1BfXZoZxiv")
+REAL_SORA_API_KEY = os.environ.get("SORA_API_KEY", "sk-Tqf7FzTrlEZxfD8EUd5tD9cqSn2D5IAS")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123") # Password សម្រាប់ចូល Dashboard
 
 DB_FILE = "users.db"
@@ -334,3 +334,4 @@ def proxy_check():
 if __name__ == '__main__':
     # Run using: gunicorn admin_server:app
     app.run(host='0.0.0.0', port=5000, debug=True)
+
