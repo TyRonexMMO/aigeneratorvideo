@@ -15,7 +15,7 @@ app.secret_key = os.environ.get("FLASK_SECRET", "super_secret_admin_key_v2")
 # --- CONFIGURATION ---
 DB_PATH = os.environ.get("DATABASE_PATH", "users.db")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
-# ផ្លូវចូលសម្ងាត់ (ឧទាហរណ៍: /secure_login)
+# Secret Login Path (e.g. /secure_login)
 ADMIN_LOGIN_PATH = os.environ.get("ADMIN_PATH", "secure_login")
 
 # Security Config
@@ -134,425 +134,316 @@ MODERN_DASHBOARD_HTML = """
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['"Kantumruy Pro"', 'sans-serif'] },
+                    colors: {
+                        primary: '#4F46E5', secondary: '#64748b', success: '#10b981', 
+                        danger: '#ef4444', warning: '#f59e0b', dark: '#1e293b'
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        :root {
-            --primary: #4F46E5;
-            --primary-hover: #4338ca;
-            --bg-color: #F3F4F6;
-            --card-bg: #FFFFFF;
-            --text-main: #1F2937;
-            --text-light: #6B7280;
-            --success: #10B981;
-            --danger: #EF4444;
-            --warning: #F59E0B;
-            --sidebar-width: 280px;
-        }
-
-        body {
-            font-family: 'Kantumruy Pro', sans-serif;
-            background-color: var(--bg-color);
-            margin: 0;
-            display: flex;
-            height: 100vh;
-            color: var(--text-main);
-        }
-
-        /* Sidebar Styling */
-        .sidebar {
-            width: var(--sidebar-width);
-            background: #111827;
-            color: white;
-            display: flex;
-            flex-direction: column;
-            padding: 20px;
-            transition: all 0.3s;
-        }
-        
-        .logo {
-            font-size: 24px;
-            font-weight: 700;
-            color: #818CF8;
-            margin-bottom: 40px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding-left: 10px;
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 14px 20px;
-            color: #9CA3AF;
-            text-decoration: none;
-            border-radius: 12px;
-            margin-bottom: 5px;
-            transition: all 0.2s;
-            font-weight: 500;
-        }
-
-        .nav-item:hover, .nav-item.active {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-        }
-
-        .nav-item i { width: 24px; text-align: center; }
-
-        /* Main Content */
-        .main-content {
-            flex: 1;
-            padding: 30px;
-            overflow-y: auto;
-        }
-
-        .header-title {
-            font-size: 28px;
-            font-weight: 700;
-            margin-bottom: 25px;
-            color: #111827;
-        }
-
-        /* Stats Grid */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .stat-card {
-            background: var(--card-bg);
-            padding: 25px;
-            border-radius: 16px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            border: 1px solid #E5E7EB;
-        }
-
-        .stat-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-        }
-
-        .stat-info h4 { margin: 0; color: var(--text-light); font-size: 14px; font-weight: 500; }
-        .stat-info p { margin: 5px 0 0; font-size: 24px; font-weight: 700; color: var(--text-main); }
-
-        /* Content Box */
-        .card-box {
-            background: var(--card-bg);
-            border-radius: 16px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-            border: 1px solid #E5E7EB;
-            padding: 25px;
-            margin-bottom: 30px;
-        }
-
-        .section-header {
-            margin-top: 0;
-            margin-bottom: 20px;
-            font-size: 18px;
-            font-weight: 600;
-            padding-bottom: 15px;
-            border-bottom: 1px solid #F3F4F6;
-            color: var(--primary);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        /* Forms */
-        .form-row { display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; }
-        .form-group { flex: 1; min-width: 200px; }
-        .form-group label { display: block; margin-bottom: 8px; font-size: 13px; color: var(--text-light); font-weight: 600; }
-        
-        .input-control {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #D1D5DB;
-            border-radius: 8px;
-            font-family: 'Kantumruy Pro', sans-serif;
-            background: #F9FAFB;
-            outline: none;
-            transition: 0.2s;
-        }
-        .input-control:focus { border-color: var(--primary); background: white; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
-
-        /* Buttons */
-        .btn {
-            padding: 12px 20px;
-            border-radius: 8px;
-            border: none;
-            font-family: 'Kantumruy Pro', sans-serif;
-            font-weight: 600;
-            cursor: pointer;
-            transition: 0.2s;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            text-decoration: none;
-        }
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-primary:hover { background: var(--primary-hover); }
-        .btn-danger { background: var(--danger); color: white; }
-        .btn-success { background: var(--success); color: white; }
-        
-        .icon-action {
-            width: 35px; height: 35px;
-            border-radius: 8px;
-            border: 1px solid #E5E7EB;
-            background: white;
-            color: var(--text-light);
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: 0.2s;
-            text-decoration: none;
-        }
-        .icon-action:hover { background: #F3F4F6; color: var(--primary); }
-        .icon-action.delete:hover { background: #FEF2F2; color: var(--danger); border-color: #FECACA; }
-
-        /* Table */
-        table { width: 100%; border-collapse: collapse; }
-        th { text-align: left; padding: 15px; color: var(--text-light); font-weight: 600; font-size: 13px; border-bottom: 1px solid #E5E7EB; background: #F9FAFB; }
-        td { padding: 15px; border-bottom: 1px solid #F3F4F6; font-size: 14px; vertical-align: middle; }
-        tr:hover td { background: #F9FAFB; }
-
-        /* Badges */
-        .badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
-        .badge-active { background: #D1FAE5; color: #065F46; }
-        .badge-banned { background: #FEE2E2; color: #991B1B; }
-        .plan-mini { background: #F3E8FF; color: #6B21A8; border: 1px solid #E9D5FF; }
-        .plan-basic { background: #DBEAFE; color: #1E40AF; border: 1px solid #BFDBFE; }
-        .plan-standard { background: #FFEDD5; color: #9A3412; border: 1px solid #FED7AA; }
-
-        /* Small Inputs in Table */
-        .mini-input { padding: 6px; border: 1px solid #D1D5DB; border-radius: 6px; width: 70px; text-align: center; }
-        .mini-select { padding: 6px; border: 1px solid #D1D5DB; border-radius: 6px; font-family: 'Kantumruy Pro'; }
+        .sidebar-link { transition: all 0.2s; }
+        .sidebar-link:hover, .sidebar-link.active { background-color: #4F46E5; color: white; transform: translateX(5px); }
+        .sidebar-link:hover i, .sidebar-link.active i { color: white; }
+        .card-hover { transition: transform 0.2s, box-shadow 0.2s; }
+        .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
-<body>
+<body class="flex h-screen overflow-hidden bg-gray-50 text-slate-800">
+
     <!-- Sidebar -->
-    <div class="sidebar">
-        <div class="logo"><i class="fas fa-layer-group"></i> Sora Manager</div>
-        <a href="/dashboard" class="nav-item {{ 'active' if page == 'users' else '' }}"><i class="fas fa-users"></i> អ្នកប្រើប្រាស់</a>
-        <a href="/vouchers" class="nav-item {{ 'active' if page == 'vouchers' else '' }}"><i class="fas fa-ticket-alt"></i> ប័ណ្ណបញ្ចូលលុយ</a>
-        <a href="/security" class="nav-item {{ 'active' if page == 'security' else '' }}"><i class="fas fa-shield-alt"></i> សុវត្ថិភាព</a>
-        <a href="/logs" class="nav-item {{ 'active' if page == 'logs' else '' }}"><i class="fas fa-history"></i> កំណត់ត្រា</a>
-        <a href="/settings" class="nav-item {{ 'active' if page == 'settings' else '' }}"><i class="fas fa-cog"></i> ការកំណត់</a>
-        <div style="flex-grow:1;"></div>
-        <a href="/logout" class="nav-item" style="color:#EF4444; background: rgba(239, 68, 68, 0.1);"><i class="fas fa-sign-out-alt"></i> ចាកចេញ</a>
-    </div>
+    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col hidden md:flex z-50 shadow-lg">
+        <div class="h-20 flex items-center px-6 border-b border-gray-50">
+            <i class="fas fa-layer-group text-primary text-2xl mr-3"></i>
+            <span class="text-xl font-bold text-slate-800 tracking-tight">SoraManager</span>
+        </div>
 
-    <!-- Content -->
-    <div class="main-content">
-        {% if page == 'users' %}
-        <div class="header-title">គ្រប់គ្រងអ្នកប្រើប្រាស់ (User Management)</div>
+        <nav class="flex-1 overflow-y-auto py-6 px-4 space-y-1.5">
+            <p class="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">ម៉ឺនុយចម្បង</p>
+            <a href="/dashboard" class="sidebar-link flex items-center px-4 py-3 text-slate-600 rounded-xl {{ 'active' if page == 'users' else '' }}">
+                <i class="fas fa-users w-6 {{ 'text-primary' if page != 'users' else 'text-white' }}"></i>
+                <span class="font-medium">អ្នកប្រើប្រាស់</span>
+            </a>
+            <a href="/vouchers" class="sidebar-link flex items-center px-4 py-3 text-slate-600 rounded-xl {{ 'active' if page == 'vouchers' else '' }}">
+                <i class="fas fa-ticket-alt w-6 {{ 'text-primary' if page != 'vouchers' else 'text-white' }}"></i>
+                <span class="font-medium">ប័ណ្ណបញ្ចូលលុយ</span>
+            </a>
+            <a href="/logs" class="sidebar-link flex items-center px-4 py-3 text-slate-600 rounded-xl {{ 'active' if page == 'logs' else '' }}">
+                <i class="fas fa-clipboard-list w-6 {{ 'text-primary' if page != 'logs' else 'text-white' }}"></i>
+                <span class="font-medium">ប្រវត្តិសកម្មភាព</span>
+            </a>
+            
+            <p class="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mt-8 mb-3">ប្រព័ន្ធ</p>
+            <a href="/security" class="sidebar-link flex items-center px-4 py-3 text-slate-600 rounded-xl {{ 'active' if page == 'security' else '' }}">
+                <i class="fas fa-shield-alt w-6 {{ 'text-primary' if page != 'security' else 'text-white' }}"></i>
+                <span class="font-medium">សុវត្ថិភាព</span>
+            </a>
+            <a href="/settings" class="sidebar-link flex items-center px-4 py-3 text-slate-600 rounded-xl {{ 'active' if page == 'settings' else '' }}">
+                <i class="fas fa-cog w-6 {{ 'text-primary' if page != 'settings' else 'text-white' }}"></i>
+                <span class="font-medium">ការកំណត់</span>
+            </a>
+        </nav>
+
+        <div class="p-4 border-t border-gray-100">
+            <a href="/logout" class="flex items-center justify-center px-4 py-3 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors font-bold">
+                <i class="fas fa-sign-out-alt mr-2"></i> ចាកចេញ
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-y-auto h-full p-6 lg:p-10 relative">
         
-        <!-- Stats -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon" style="background:#EEF2FF; color:#4F46E5;"><i class="fas fa-users"></i></div>
-                <div class="stat-info"><h4>អ្នកប្រើសរុប</h4><p>{{ total_users }}</p></div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon" style="background:#ECFDF5; color:#10B981;"><i class="fas fa-user-check"></i></div>
-                <div class="stat-info"><h4>កំពុងសកម្ម</h4><p>{{ active_users }}</p></div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon" style="background:#FFF7ED; color:#F97316;"><i class="fas fa-coins"></i></div>
-                <div class="stat-info"><h4>ក្រេឌីតសរុប</h4><p>{{ total_credits }}</p></div>
-            </div>
-        </div>
-
-        <!-- Add User -->
-        <div class="card-box">
-            <h4 class="section-header"><i class="fas fa-user-plus"></i> បង្កើតគណនីថ្មី</h4>
-            <form action="/add_user" method="POST" class="form-row">
-                <div class="form-group"><label>ឈ្មោះគណនី (Username)</label><input type="text" name="username" class="input-control" placeholder="Ex: User01" required></div>
-                <div class="form-group"><label>ក្រេឌីត (Credits)</label><input type="number" name="credits" class="input-control" placeholder="500" required></div>
-                <div class="form-group"><label>កញ្ចប់ (Plan)</label>
-                    <select name="plan" class="input-control">
-                        <option value="Mini">Mini (1 Process)</option>
-                        <option value="Basic">Basic (2 Processes)</option>
-                        <option value="Standard" selected>Standard (3 Processes)</option>
-                    </select>
+        {% if page == 'users' %}
+        <div class="max-w-7xl mx-auto">
+            <div class="flex justify-between items-end mb-8">
+                <div>
+                    <h1 class="text-3xl font-bold text-slate-800">គ្រប់គ្រងអ្នកប្រើប្រាស់</h1>
+                    <p class="text-slate-500 mt-1">មើលនិងគ្រប់គ្រងសិទ្ធិប្រើប្រាស់ និងក្រេឌីត</p>
                 </div>
-                <div class="form-group"><label>ថ្ងៃផុតកំណត់</label><input type="date" name="expiry" class="input-control" required></div>
-                <div class="form-group"><button class="btn btn-primary" style="width:100%; height:46px; margin-top:2px;">បង្កើត</button></div>
-            </form>
-        </div>
+                <div class="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 border border-emerald-100">
+                    <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
+                    System Online
+                </div>
+            </div>
 
-        <!-- User Table -->
-        <div class="card-box" style="padding:0; overflow:hidden;">
-            <table style="width:100%;">
-                <thead>
-                    <tr>
-                        <th>ឈ្មោះគណនី</th>
-                        <th>License Key</th>
-                        <th>កញ្ចប់ (Plan)</th>
-                        <th>ក្រេឌីត</th>
-                        <th>ផុតកំណត់</th>
-                        <th>ស្ថានភាព</th>
-                        <th>គ្រប់គ្រង</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for user in users %}
-                    <tr>
-                        <td style="font-weight:700;">{{ user[0] }}</td>
-                        <td style="font-family:monospace; color:var(--text-light);">{{ user[1] }}</td>
-                        <td>
-                            <form action="/update_plan" method="POST">
-                                <input type="hidden" name="username" value="{{ user[0] }}">
-                                <select name="plan" class="mini-select" onchange="this.form.submit()">
-                                    <option value="Mini" {% if user[6]=='Mini' %}selected{% endif %}>Mini</option>
-                                    <option value="Basic" {% if user[6]=='Basic' %}selected{% endif %}>Basic</option>
-                                    <option value="Standard" {% if user[6]=='Standard' %}selected{% endif %}>Standard</option>
-                                </select>
-                            </form>
-                        </td>
-                        <td>
-                            <form action="/update_credits" method="POST" style="display:flex; align-items:center; gap:5px;">
-                                <input type="hidden" name="username" value="{{ user[0] }}">
-                                <span style="font-weight:bold; color:{{ '#10B981' if user[2] > 50 else '#EF4444' }}; min-width:30px;">{{ user[2] }}</span>
-                                <input type="number" name="amount" class="mini-input" placeholder="+/-">
-                                <button class="icon-action" style="background:#10B981; color:white; border:none; width:28px; height:28px;"><i class="fas fa-check"></i></button>
-                            </form>
-                        </td>
-                        <td>{{ user[3] }}</td>
-                        <td>{% if user[4] %}<span class="badge badge-active">Active</span>{% else %}<span class="badge badge-banned">Banned</span>{% endif %}</td>
-                        <td>
-                            <div style="display:flex; gap:5px;">
-                                <a href="/toggle_status/{{ user[0] }}" class="icon-action" title="Block/Unblock"><i class="fas fa-power-off"></i></a>
-                                <a href="/delete_user/{{ user[0] }}" class="icon-action delete" title="Delete" onclick="return confirm('Confirm delete?')"><i class="fas fa-trash"></i></a>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <!-- Stats -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="card-hover bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
+                    <div class="flex justify-between items-start z-10 relative">
+                        <div><p class="text-xs font-bold text-slate-400 uppercase tracking-wide">អ្នកប្រើសរុប</p><h3 class="text-3xl font-bold text-slate-800 mt-1">{{ total_users }}</h3></div>
+                        <div class="p-3 bg-indigo-50 rounded-xl text-indigo-600"><i class="fas fa-users text-xl"></i></div>
+                    </div>
+                </div>
+                <div class="card-hover bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
+                    <div class="flex justify-between items-start z-10 relative">
+                        <div><p class="text-xs font-bold text-slate-400 uppercase tracking-wide">គណនីសកម្ម</p><h3 class="text-3xl font-bold text-slate-800 mt-1">{{ active_users }}</h3></div>
+                        <div class="p-3 bg-emerald-50 rounded-xl text-emerald-600"><i class="fas fa-user-check text-xl"></i></div>
+                    </div>
+                </div>
+                <div class="card-hover bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
+                    <div class="flex justify-between items-start z-10 relative">
+                        <div><p class="text-xs font-bold text-slate-400 uppercase tracking-wide">ក្រេឌីតសរុប</p><h3 class="text-3xl font-bold text-slate-800 mt-1">{{ total_credits }}</h3></div>
+                        <div class="p-3 bg-amber-50 rounded-xl text-amber-600"><i class="fas fa-coins text-xl"></i></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Create User -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-8">
+                <h3 class="text-lg font-bold text-slate-800 mb-5 flex items-center gap-2"><i class="fas fa-user-plus text-primary"></i> បង្កើតគណនីថ្មី</h3>
+                <form action="/add_user" method="POST" class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                    <div class="col-span-1"><label class="block text-xs font-bold text-slate-500 mb-1.5">USERNAME</label><input type="text" name="username" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" placeholder="Ex: User01" required></div>
+                    <div class="col-span-1"><label class="block text-xs font-bold text-slate-500 mb-1.5">CREDITS</label><input type="number" name="credits" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" placeholder="500" required></div>
+                    <div class="col-span-1"><label class="block text-xs font-bold text-slate-500 mb-1.5">PLAN</label>
+                        <select name="plan" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium cursor-pointer">
+                            <option value="Mini">Mini (1)</option><option value="Basic">Basic (2)</option><option value="Standard" selected>Standard (3)</option>
+                        </select>
+                    </div>
+                    <div class="col-span-1"><label class="block text-xs font-bold text-slate-500 mb-1.5">EXPIRY</label><input type="date" name="expiry" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium cursor-pointer" required></div>
+                    <div class="col-span-1"><button type="submit" class="w-full bg-primary hover:bg-indigo-600 text-white font-bold py-2.5 rounded-lg transition shadow-lg shadow-indigo-500/30 flex items-center justify-center gap-2"><i class="fas fa-check"></i> បង្កើត</button></div>
+                </form>
+            </div>
+
+            <!-- Table -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead class="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-100">
+                            <tr><th class="px-6 py-4 font-bold">ឈ្មោះគណនី</th><th class="px-6 py-4 font-bold">License Key</th><th class="px-6 py-4 font-bold">កញ្ចប់</th><th class="px-6 py-4 font-bold text-center">ក្រេឌីត</th><th class="px-6 py-4 font-bold">ផុតកំណត់</th><th class="px-6 py-4 font-bold">ស្ថានភាព</th><th class="px-6 py-4 font-bold text-right">សកម្មភាព</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            {% for user in users %}
+                            <tr class="hover:bg-slate-50 transition-colors group">
+                                <td class="px-6 py-4 font-bold text-slate-700">{{ user[0] }}</td>
+                                <td class="px-6 py-4 font-mono text-slate-400 text-xs select-all">{{ user[1] }}</td>
+                                <td class="px-6 py-4">
+                                    {% if user[6] == 'Standard' %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-600 border border-orange-200">Standard</span>
+                                    {% elif user[6] == 'Basic' %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-600 border border-blue-200">Basic</span>
+                                    {% else %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-600 border border-purple-200">Mini</span>{% endif %}
+                                </td>
+                                <td class="px-6 py-4">
+                                    <form action="/update_credits" method="POST" class="flex items-center justify-center gap-2">
+                                        <input type="hidden" name="username" value="{{ user[0] }}">
+                                        <span class="font-bold {{ 'text-emerald-500' if user[2] > 50 else 'text-red-500' }}">{{ user[2] }}</span>
+                                        <input type="number" name="amount" placeholder="+/-" class="w-16 px-2 py-1 text-xs border rounded-md bg-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all opacity-0 group-hover:opacity-100 focus:opacity-100">
+                                    </form>
+                                </td>
+                                <td class="px-6 py-4 text-slate-500 text-xs">{{ user[3] }}</td>
+                                <td class="px-6 py-4">
+                                    {% if user[4] %}<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Active</span>
+                                    {% else %}<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Banned</span>{% endif %}
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <form action="/update_plan" method="POST" class="inline">
+                                            <input type="hidden" name="username" value="{{ user[0] }}">
+                                            <select name="plan" onchange="this.form.submit()" class="w-20 text-xs py-1 px-1 border rounded bg-white text-slate-600 cursor-pointer outline-none">
+                                                <option value="" disabled selected>Plan</option><option value="Mini">Mini</option><option value="Basic">Basic</option><option value="Standard">Std</option>
+                                            </select>
+                                        </form>
+                                        <a href="/toggle_status/{{ user[0] }}" class="p-1.5 bg-slate-100 rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-800 transition-colors" title="Toggle Status"><i class="fas fa-power-off"></i></a>
+                                        <a href="/delete_user/{{ user[0] }}" class="p-1.5 bg-red-50 rounded-md text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors" onclick="return confirm('Delete?')" title="Delete"><i class="fas fa-trash-alt"></i></a>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         {% elif page == 'vouchers' %}
-        <div class="header-title">ប្រព័ន្ធប័ណ្ណបញ្ចូលលុយ (Vouchers)</div>
-        <div class="card-box">
-            <h4 class="section-header"><i class="fas fa-magic"></i> បង្កើតកូដថ្មី</h4>
-            <form action="/generate_vouchers" method="POST" class="form-row">
-                <div class="form-group"><label>ចំនួនក្រេឌីត (Credit Amount)</label><input type="number" name="amount" class="input-control" placeholder="100" required></div>
-                <div class="form-group"><label>ចំនួនសន្លឹក (Quantity)</label><input type="number" name="count" class="input-control" value="1" required></div>
-                <div class="form-group"><button class="btn btn-success" style="height:46px;">បង្កើតកូដ</button></div>
-            </form>
+        <div class="max-w-5xl mx-auto">
+            <h1 class="text-2xl font-bold text-slate-800 mb-6">ប័ណ្ណបញ្ចូលលុយ (Vouchers)</h1>
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-8 flex gap-6 items-end">
+                <div class="flex-1">
+                    <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-magic text-primary"></i> បង្កើតកូដថ្មី</h3>
+                    <p class="text-sm text-slate-400">បង្កើតកូដសម្រាប់ឱ្យអ្នកប្រើប្រាស់បញ្ចូលដោយខ្លួនឯង</p>
+                </div>
+                <form action="/generate_vouchers" method="POST" class="flex gap-4 items-end flex-[2]">
+                    <div class="flex-1">
+                        <label class="block text-xs font-bold text-slate-500 mb-1">ចំនួនក្រេឌីត</label>
+                        <input type="number" name="amount" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="100" required>
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs font-bold text-slate-500 mb-1">ចំនួនសន្លឹក</label>
+                        <input type="number" name="count" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value="1" required>
+                    </div>
+                    <button class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 px-6 rounded-lg transition shadow-lg shadow-emerald-500/30">បង្កើត</button>
+                </form>
+            </div>
+            
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <table class="w-full text-sm text-left">
+                    <thead class="text-xs text-slate-500 uppercase bg-slate-50 border-b"><tr><th class="px-6 py-4">Code</th><th class="px-6 py-4">Value</th><th class="px-6 py-4">Status</th><th class="px-6 py-4">Used By</th></tr></thead>
+                    <tbody class="divide-y divide-slate-100">
+                        {% for v in vouchers %}
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-6 py-4 font-mono font-bold text-slate-700 select-all">{{ v[0] }}</td>
+                            <td class="px-6 py-4 text-emerald-600 font-bold">+{{ v[1] }}</td>
+                            <td class="px-6 py-4">{% if v[2] %}<span class="px-2 py-1 rounded text-xs font-bold bg-red-100 text-red-600">Used</span>{% else %}<span class="px-2 py-1 rounded text-xs font-bold bg-green-100 text-green-600">Active</span>{% endif %}</td>
+                            <td class="px-6 py-4 text-slate-500">{{ v[4] if v[4] else '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
-        <div class="card-box" style="padding:0; overflow:hidden;">
-            <table>
-                <thead><tr><th>កូដ (Code)</th><th>តម្លៃ</th><th>ស្ថានភាព</th><th>អ្នកប្រើ</th><th>កាលបរិច្ឆេទ</th></tr></thead>
-                <tbody>
-                    {% for v in vouchers %}
-                    <tr>
-                        <td style="font-family:monospace; font-weight:bold; color:var(--primary);">{{ v[0] }}</td>
-                        <td style="color:var(--success); font-weight:bold;">+{{ v[1] }}</td>
-                        <td>{% if v[2] %}<span class="badge badge-banned">ប្រើរួច</span>{% else %}<span class="badge badge-active">នៅទំនេរ</span>{% endif %}</td>
-                        <td>{{ v[4] if v[4] else '-' }}</td>
-                        <td style="color:gray; font-size:12px;">{{ v[3] }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-
+        
         {% elif page == 'security' %}
-        <div class="header-title">សុវត្ថិភាពប្រព័ន្ធ (Security Shield)</div>
-        <div class="card-box">
-            <h4 class="section-header" style="color:var(--danger);"><i class="fas fa-ban"></i> IP ដែលត្រូវបានហាមឃាត់ (Banned IPs)</h4>
-            <p style="margin-bottom:20px; color:gray;">IP ទាំងនេះត្រូវបានបិទដោយស្វ័យប្រវត្តិ ដោយសារសកម្មភាពមិនប្រក្រតី (Brute force/Scanning)។</p>
-            <table>
-                <thead><tr><th>IP Address</th><th>មូលហេតុ (Reason)</th><th>ពេលវេលា</th><th>សកម្មភាព</th></tr></thead>
-                <tbody>
-                    {% for ip in banned_ips %}
-                    <tr>
-                        <td style="font-family:monospace; font-weight:bold;">{{ ip[0] }}</td>
-                        <td>{{ ip[1] }}</td>
-                        <td>{{ ip[2] }}</td>
-                        <td><a href="/unban_ip/{{ ip[0] }}" class="btn btn-success" style="padding:6px 12px; font-size:12px;">ដោះលែង (Unban)</a></td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="4" style="text-align:center; padding:30px;">✅ មិនមាន IP ជាប់ Ban ទេ (Clean)</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <div class="max-w-5xl mx-auto">
+            <h1 class="text-2xl font-bold text-slate-800 mb-6">សុវត្ថិភាព (Security Shield)</h1>
+            <div class="bg-white rounded-2xl shadow-sm border border-red-100 p-6 relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10"><i class="fas fa-shield-alt text-9xl text-red-500"></i></div>
+                <h4 class="text-lg font-bold text-red-600 mb-2 relative z-10"><i class="fas fa-ban"></i> IP ដែលត្រូវបានហាមឃាត់ (Banned IPs)</h4>
+                <p class="text-sm text-slate-500 mb-6 relative z-10">IP ទាំងនេះត្រូវបានបិទដោយស្វ័យប្រវត្តិ ដោយសារសកម្មភាពមិនប្រក្រតី (Brute force/Scanning)។</p>
+                <div class="overflow-x-auto relative z-10">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-red-50 text-red-700 text-xs uppercase rounded-lg"><tr><th class="px-6 py-3 rounded-l-lg">IP Address</th><th class="px-6 py-3">Reason</th><th class="px-6 py-3">Time</th><th class="px-6 py-3 rounded-r-lg">Action</th></tr></thead>
+                        <tbody class="divide-y divide-red-100">
+                            {% for ip in banned_ips %}
+                            <tr>
+                                <td class="px-6 py-4 font-mono font-bold">{{ ip[0] }}</td>
+                                <td class="px-6 py-4">{{ ip[1] }}</td>
+                                <td class="px-6 py-4 text-xs text-slate-400">{{ ip[2] }}</td>
+                                <td class="px-6 py-4"><a href="/unban_ip/{{ ip[0] }}" class="px-3 py-1 bg-emerald-500 text-white rounded text-xs font-bold hover:bg-emerald-600 shadow-md shadow-emerald-200">Unban</a></td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="4" class="px-6 py-8 text-center text-slate-400">✅ មិនមាន IP ជាប់ Ban ទេ (System Clean)</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         {% elif page == 'settings' %}
-        <div class="header-title">ការកំណត់ប្រព័ន្ធ (System Settings)</div>
-        
-        <div class="card-box">
-            <h4 class="section-header"><i class="fas fa-bullhorn"></i> ផ្សព្វផ្សាយដំណឹង (Broadcast)</h4>
-            <form action="/update_broadcast" method="POST" style="display:flex; gap:10px;">
-                <input type="text" name="message" class="input-control" placeholder="សរសេរសារជូនដំណឹងទៅកាន់អ្នកប្រើប្រាស់ទាំងអស់..." value="{{ broadcast_msg }}">
-                <button class="btn btn-primary">Update</button>
-                <a href="/clear_broadcast" class="btn btn-danger">Clear</a>
-            </form>
-        </div>
-
-        <form action="/update_settings" method="POST">
-            <div class="form-row" style="margin-bottom:20px;">
-                <!-- Costs -->
-                <div class="card-box" style="flex:1; margin-bottom:0;">
-                    <h4 class="section-header"><i class="fas fa-tag"></i> តម្លៃបង្កើតវីដេអូ</h4>
-                    <div class="form-group" style="margin-bottom:15px;"><label>Sora-2 Cost (10s)</label><input type="number" name="cost_sora_2" class="input-control" value="{{ costs.sora_2 }}"></div>
-                    <div class="form-group"><label>Sora-2 Pro Cost (15s)</label><input type="number" name="cost_sora_2_pro" class="input-control" value="{{ costs.sora_2_pro }}"></div>
-                </div>
-                <!-- Limits -->
-                <div class="card-box" style="flex:1; margin-bottom:0;">
-                    <h4 class="section-header"><i class="fas fa-tachometer-alt"></i> កំណត់ចំនួនដំណើរការ (Limits)</h4>
-                    <div class="form-group" style="margin-bottom:10px;"><label>Mini Plan</label><input type="number" name="limit_mini" class="input-control" value="{{ limits.mini }}"></div>
-                    <div class="form-group" style="margin-bottom:10px;"><label>Basic Plan</label><input type="number" name="limit_basic" class="input-control" value="{{ limits.basic }}"></div>
-                    <div class="form-group"><label>Standard Plan</label><input type="number" name="limit_standard" class="input-control" value="{{ limits.standard }}"></div>
-                </div>
+        <div class="max-w-3xl mx-auto">
+            <h1 class="text-2xl font-bold text-slate-800 mb-6">ការកំណត់ (Settings)</h1>
+            
+            <!-- Broadcast -->
+            <div class="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-6 text-white shadow-xl shadow-indigo-200 mb-8">
+                <h4 class="font-bold text-lg mb-2 flex items-center gap-2"><i class="fas fa-bullhorn"></i> ផ្សព្វផ្សាយដំណឹង (Broadcast)</h4>
+                <p class="text-white/80 text-sm mb-4">សារនេះនឹងលោតឡើងលើកម្មវិធីអ្នកប្រើប្រាស់ទាំងអស់។</p>
+                <form action="/update_broadcast" method="POST" class="flex gap-2">
+                    <input type="text" name="message" value="{{ broadcast_msg }}" class="flex-1 bg-white/20 border border-white/30 rounded-lg px-4 py-2.5 text-white placeholder-white/60 focus:bg-white/30 outline-none backdrop-blur-sm" placeholder="សរសេរសារ...">
+                    <button class="bg-white text-indigo-600 font-bold px-6 py-2.5 rounded-lg hover:bg-indigo-50 shadow-lg">Send</button>
+                    <a href="/clear_broadcast" class="bg-red-500/80 hover:bg-red-500 text-white font-bold px-4 py-2.5 rounded-lg backdrop-blur-sm">Clear</a>
+                </form>
             </div>
             
-            <div class="card-box">
-                <h4 class="section-header"><i class="fas fa-key"></i> API Configuration</h4>
-                <div class="form-group">
-                    <label>Real Sora API Key</label>
-                    <input type="text" name="sora_api_key" class="input-control" value="{{ api_key }}">
+            <form action="/update_settings" method="POST">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <!-- Costs -->
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                        <h4 class="font-bold text-slate-700 mb-4 border-b pb-2 flex items-center gap-2"><i class="fas fa-tag text-amber-500"></i> តម្លៃ (Costs)</h4>
+                        <div class="space-y-4">
+                            <div><label class="text-xs font-bold text-slate-400">SORA-2 (Credits)</label><input type="number" name="cost_sora_2" value="{{ costs.sora_2 }}" class="w-full mt-1 p-2 border rounded-lg bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none transition"></div>
+                            <div><label class="text-xs font-bold text-slate-400">SORA-2 PRO (Credits)</label><input type="number" name="cost_sora_2_pro" value="{{ costs.sora_2_pro }}" class="w-full mt-1 p-2 border rounded-lg bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none transition"></div>
+                        </div>
+                    </div>
+                    <!-- Limits -->
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                        <h4 class="font-bold text-slate-700 mb-4 border-b pb-2 flex items-center gap-2"><i class="fas fa-tachometer-alt text-blue-500"></i> ដែនកំណត់ (Limits)</h4>
+                        <div class="space-y-4">
+                            <div class="flex gap-3">
+                                <div class="flex-1"><label class="text-xs font-bold text-slate-400">MINI</label><input type="number" name="limit_mini" value="{{ limits.mini }}" class="w-full mt-1 p-2 border rounded-lg bg-slate-50 text-center font-bold text-purple-600"></div>
+                                <div class="flex-1"><label class="text-xs font-bold text-slate-400">BASIC</label><input type="number" name="limit_basic" value="{{ limits.basic }}" class="w-full mt-1 p-2 border rounded-lg bg-slate-50 text-center font-bold text-blue-600"></div>
+                                <div class="flex-1"><label class="text-xs font-bold text-slate-400">STD</label><input type="number" name="limit_standard" value="{{ limits.standard }}" class="w-full mt-1 p-2 border rounded-lg bg-slate-50 text-center font-bold text-orange-600"></div>
+                            </div>
+                            <p class="text-xs text-slate-400 italic mt-2">* ចំនួនដំណើរការក្នុងពេលតែមួយ (Concurrent Processes)</p>
+                        </div>
+                    </div>
                 </div>
-                <div style="margin-top:20px; display:flex; justify-content:space-between;">
-                    <button class="btn btn-success"><i class="fas fa-save"></i> រក្សាទុកការកំណត់ទាំងអស់</button>
-                    <a href="/download_db" class="btn btn-primary" style="background:#0F172A;"><i class="fas fa-database"></i> Backup Database</a>
+                
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-6">
+                     <h4 class="font-bold text-slate-700 mb-4"><i class="fas fa-key text-slate-400"></i> API Configuration</h4>
+                     <label class="text-xs font-bold text-slate-400 block mb-1">REAL SORA API KEY</label>
+                     <input type="text" name="sora_api_key" value="{{ api_key }}" class="w-full p-3 border rounded-lg bg-slate-50 font-mono text-sm focus:bg-white focus:border-indigo-500 outline-none transition">
                 </div>
-            </div>
-        </form>
-
+                
+                <div class="flex justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <a href="/download_db" class="text-slate-600 hover:text-slate-900 text-sm font-bold flex items-center gap-2 px-4 py-2 hover:bg-slate-200 rounded-lg transition"><i class="fas fa-download"></i> Backup Database</a>
+                    <button class="bg-primary hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg shadow-indigo-500/30 transition transform hover:-translate-y-0.5">Save Changes</button>
+                </div>
+            </form>
+        </div>
+        
         {% elif page == 'logs' %}
-        <div class="header-title">កំណត់ត្រា (System Logs)</div>
-        <div class="card-box" style="padding:0; overflow:hidden;">
-            <table>
-                <thead><tr><th>ពេលវេលា</th><th>ឈ្មោះគណនី</th><th>សកម្មភាព</th><th>ការចំណាយ</th></tr></thead>
-                <tbody>
-                    {% for log in logs %}
-                    <tr>
-                        <td style="color:#6B7280;">{{ log[4] }}</td>
-                        <td style="font-weight:bold;">{{ log[1] }}</td>
-                        <td>{{ log[2] }}</td>
-                        <td style="font-weight:bold; color:var(--danger);">-{{ log[3] }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <div class="max-w-6xl mx-auto">
+            <h1 class="text-2xl font-bold text-slate-800 mb-6">កំណត់ត្រា (Logs)</h1>
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-slate-50 text-slate-500 text-xs uppercase border-b border-slate-100"><tr><th class="px-6 py-4">Time</th><th class="px-6 py-4">User</th><th class="px-6 py-4">Action</th><th class="px-6 py-4">Cost</th></tr></thead>
+                    <tbody class="divide-y divide-slate-100">
+                        {% for l in logs %}
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-6 py-3 text-slate-400 font-mono text-xs">{{ l[4] }}</td>
+                            <td class="px-6 py-3 font-bold text-slate-700">{{ l[1] }}</td>
+                            <td class="px-6 py-3">{{ l[2] }}</td>
+                            <td class="px-6 py-3 font-bold text-red-500">-{{ l[3] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
         {% endif %}
-    </div>
+    </main>
 </body>
 </html>
 """
@@ -562,27 +453,27 @@ LOGIN_HTML = """
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Admin Login</title>
+    <title>Secure Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;600&display=swap" rel="stylesheet">
-    <style>
-        body { background: #F3F4F6; height: 100vh; display: flex; justify-content: center; align-items: center; font-family: 'Kantumruy Pro', sans-serif; margin: 0; }
-        .login-card { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 350px; text-align: center; }
-        h2 { color: #111827; margin-top: 0; }
-        input { width: 100%; padding: 12px; margin-bottom: 20px; border: 1px solid #D1D5DB; border-radius: 8px; box-sizing: border-box; outline: none; transition: 0.2s; }
-        input:focus { border-color: #4F46E5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
-        button { width: 100%; padding: 12px; background: #4F46E5; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 16px; transition: 0.2s; }
-        button:hover { background: #4338ca; }
-        .secure-badge { background: #ECFDF5; color: #047857; padding: 5px 10px; border-radius: 20px; font-size: 12px; display: inline-block; margin-bottom: 20px; font-weight: bold; }
-    </style>
 </head>
-<body>
-    <div class="login-card">
-        <div class="secure-badge">🔒 Secure Gateway</div>
-        <h2>Sora Admin</h2>
-        <form method="POST">
-            <input type="password" name="password" placeholder="បញ្ចូលលេខកូដសម្ងាត់" required>
-            <button>ចូលប្រព័ន្ធ</button>
+<body class="bg-gray-100 h-screen flex items-center justify-center font-sans">
+    <div class="bg-white p-10 rounded-2xl shadow-xl w-96 text-center border border-gray-100">
+        <div class="mb-6 inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-50 text-indigo-600">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+        </div>
+        <h2 class="text-2xl font-bold text-gray-800 mb-2">Admin Portal</h2>
+        <p class="text-sm text-gray-500 mb-8">Secure Gateway Access</p>
+        
+        <form method="POST" class="space-y-4">
+            <input type="password" name="password" placeholder="Access Key" class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition" required>
+            <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition duration-200 shadow-lg shadow-indigo-500/30">
+                Unlock Dashboard
+            </button>
         </form>
+        <p class="mt-8 text-xs text-gray-400">System ID: 2025-SECURE-V2</p>
     </div>
 </body>
 </html>
