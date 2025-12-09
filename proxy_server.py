@@ -58,7 +58,9 @@ def init_db():
         'cost_sora_2': '25', 'cost_sora_2_pro': '35',
         'limit_mini': '1', 'limit_basic': '2', 'limit_standard': '3',
         'broadcast_msg': '',
-        'broadcast_color': '#FF0000' # Default Red
+        'broadcast_color': '#FF0000', # Default Red
+        'latest_version': '1.0.0', # Default Version
+        'update_desc': 'Initial Release' # Default Description
     }
     for k, v in defaults.items():
         try: c.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (k, v))
@@ -373,15 +375,33 @@ MODERN_DASHBOARD_HTML = """
         </div>
 
         {% elif page == 'settings' %}
-        <div class="max-w-3xl mx-auto">
+        <div class="max-w-4xl mx-auto">
             <h1 class="text-2xl font-bold text-slate-800 mb-6">ការកំណត់ (Settings)</h1>
             
+            <!-- Update System Config -->
+            <div class="bg-gradient-to-r from-blue-600 to-cyan-500 rounded-2xl p-6 text-white shadow-xl shadow-blue-200 mb-8">
+                <h4 class="font-bold text-lg mb-2 flex items-center gap-2"><i class="fas fa-sync-alt"></i> ប្រព័ន្ធអាប់ដេតកម្មវិធី (App Updates)</h4>
+                <p class="text-white/80 text-sm mb-4">កំណត់កំណែថ្មី និងសារបង្ហាញទៅកាន់អ្នកប្រើប្រាស់។</p>
+                <form action="/update_settings" method="POST" class="space-y-4">
+                    <div class="flex gap-4">
+                        <div class="w-1/3">
+                            <label class="text-xs font-bold text-white/70 block mb-1">Latest Version</label>
+                            <input type="text" name="latest_version" value="{{ latest_version }}" class="w-full bg-white/20 border border-white/30 rounded-lg px-3 py-2 text-white placeholder-white/60 focus:bg-white/30 outline-none backdrop-blur-sm" placeholder="Ex: 25.12.11">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-white/70 block mb-1">Update Description (បង្ហាញលើផ្ទាំងអ្នកប្រើ)</label>
+                        <textarea name="update_desc" class="w-full bg-white/20 border border-white/30 rounded-lg px-3 py-2 text-white placeholder-white/60 focus:bg-white/30 outline-none backdrop-blur-sm h-24" placeholder="សរសេរអំពីអ្វីដែលថ្មី...">{{ update_desc }}</textarea>
+                    </div>
+                    <button class="bg-white text-blue-600 font-bold px-6 py-2.5 rounded-lg hover:bg-blue-50 shadow-lg">Save Update Info</button>
+                </form>
+            </div>
+
             <!-- Broadcast -->
             <div class="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-6 text-white shadow-xl shadow-indigo-200 mb-8">
                 <h4 class="font-bold text-lg mb-2 flex items-center gap-2"><i class="fas fa-bullhorn"></i> ផ្សព្វផ្សាយដំណឹង (Broadcast)</h4>
                 <p class="text-white/80 text-sm mb-4">សារនេះនឹងលោតឡើងលើកម្មវិធីអ្នកប្រើប្រាស់ទាំងអស់។</p>
                 <form action="/update_broadcast" method="POST" class="flex gap-2 items-center">
-                    <!-- Color Picker Added Here -->
                     <input type="color" name="color" value="{{ broadcast_color }}" class="h-10 w-10 rounded border-none cursor-pointer shadow-lg" title="ពណ៌អក្សរ">
                     <input type="text" name="message" value="{{ broadcast_msg }}" class="flex-1 bg-white/20 border border-white/30 rounded-lg px-4 py-2.5 text-white placeholder-white/60 focus:bg-white/30 outline-none backdrop-blur-sm" placeholder="សរសេរសារ...">
                     <button class="bg-white text-indigo-600 font-bold px-6 py-2.5 rounded-lg hover:bg-indigo-50 shadow-lg">Send</button>
@@ -554,10 +574,15 @@ def view_logs():
 def settings():
     k = get_setting('sora_api_key', '')
     msg = get_setting('broadcast_msg', '')
-    clr = get_setting('broadcast_color', '#FF0000') # Get color
+    clr = get_setting('broadcast_color', '#FF0000') 
+    latest_ver = get_setting('latest_version', '1.0.0')
+    update_desc = get_setting('update_desc', 'Initial Release')
+    
     costs = {'sora_2': get_setting('cost_sora_2', 25), 'sora_2_pro': get_setting('cost_sora_2_pro', 35)}
     limits = {'mini': get_setting('limit_mini', 1), 'basic': get_setting('limit_basic', 2), 'standard': get_setting('limit_standard', 3)}
-    return render_template_string(MODERN_DASHBOARD_HTML, page='settings', api_key=k, broadcast_msg=msg, broadcast_color=clr, costs=costs, limits=limits)
+    
+    return render_template_string(MODERN_DASHBOARD_HTML, page='settings', api_key=k, broadcast_msg=msg, broadcast_color=clr, 
+                                  costs=costs, limits=limits, latest_version=latest_ver, update_desc=update_desc)
 
 # --- ACTION ROUTES ---
 @app.route('/add_user', methods=['POST'])
@@ -621,7 +646,7 @@ def update_settings():
 @login_required
 def update_broadcast():
     set_setting('broadcast_msg', request.form.get('message'))
-    set_setting('broadcast_color', request.form.get('color')) # Save color
+    set_setting('broadcast_color', request.form.get('color')) 
     return redirect('/settings')
 
 @app.route('/clear_broadcast')
@@ -643,15 +668,32 @@ def verify_user():
     conn = get_db(); c = conn.cursor()
     c.execute("SELECT credits, expiry_date, is_active, plan FROM users WHERE username=? AND api_key=?", (d.get('username'), d.get('api_key')))
     u = c.fetchone()
+    
+    # Get all global settings to send to client
     b = get_setting('broadcast_msg', '')
-    bc = get_setting('broadcast_color', '#FF0000') # Get broadcast color
+    bc = get_setting('broadcast_color', '#FF0000')
+    lv = get_setting('latest_version', '1.0.0')
+    ud = get_setting('update_desc', 'Initial Release')
+    
     conn.close()
+    
     if not u: return jsonify({"valid": False, "message": "Invalid Credentials"})
     if not u[2]: return jsonify({"valid": False, "message": "Banned"})
     if datetime.now() > datetime.strptime(u[1], "%Y-%m-%d"): return jsonify({"valid": False, "message": "Expired"})
+    
     limit = int(get_setting(f"limit_{u[3].lower()}", 3))
-    # Return broadcast_color
-    return jsonify({"valid": True, "credits": u[0], "expiry": u[1], "plan": u[3], "concurrency_limit": limit, "broadcast": b, "broadcast_color": bc})
+    
+    return jsonify({
+        "valid": True, 
+        "credits": u[0], 
+        "expiry": u[1], 
+        "plan": u[3], 
+        "concurrency_limit": limit, 
+        "broadcast": b, 
+        "broadcast_color": bc,
+        "latest_version": lv,
+        "update_desc": ud
+    })
 
 @app.route('/api/redeem', methods=['POST'])
 def redeem():
