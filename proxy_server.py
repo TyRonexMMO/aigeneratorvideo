@@ -14,7 +14,7 @@ from functools import wraps
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET", "super_secret_admin_key_v5")
+app.secret_key = os.environ.get("FLASK_SECRET", "super_secret_admin_key_v6_fix")
 
 # --- CONFIGURATION ---
 DB_PATH = os.environ.get("DATABASE_PATH", "users.db")
@@ -25,58 +25,65 @@ ADMIN_LOGIN_PATH = os.environ.get("ADMIN_PATH", "secure_login")
 MAX_SUSPICIOUS_ATTEMPTS = 5
 suspicious_tracker = {} 
 
-# --- DATABASE SETUP ---
+# --- DATABASE SETUP & AUTO-REPAIR ---
 def get_db():
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row 
+    conn.row_factory = sqlite3.Row  # Allow accessing columns by name
     return conn
 
-def init_db():
+def init_and_migrate_db():
     conn = get_db()
     c = conn.cursor()
     
-    # 1. Users Table
-    c.execute('''CREATE TABLE IF NOT EXISTS users
-                 (username TEXT PRIMARY KEY, api_key TEXT, credits INTEGER, expiry_date TEXT, 
-                  is_active INTEGER, created_at TEXT, plan TEXT DEFAULT 'Standard',
-                  custom_limit INTEGER DEFAULT NULL, 
-                  custom_cost_2 INTEGER DEFAULT NULL, 
-                  custom_cost_pro INTEGER DEFAULT NULL,
-                  assigned_api_key TEXT DEFAULT NULL,
-                  last_seen TEXT,
-                  session_minutes INTEGER DEFAULT 0,
-                  daily_stats TEXT DEFAULT '{}')''')
+    # 1. Create Base Tables if not exist
+    c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS vouchers (code TEXT PRIMARY KEY)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS voucher_usage (id INTEGER PRIMARY KEY AUTOINCREMENT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS tasks (task_id TEXT PRIMARY KEY)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS banned_ips (ip TEXT PRIMARY KEY)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS api_keys (key_value TEXT PRIMARY KEY)''')
 
-    # 2. Logs Table
-    c.execute('''CREATE TABLE IF NOT EXISTS logs
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, action TEXT, cost INTEGER, timestamp TEXT, status TEXT)''')
-    
-    # 3. Settings Table
-    c.execute('''CREATE TABLE IF NOT EXISTS settings
-                 (key TEXT PRIMARY KEY, value TEXT)''')
+    # 2. Define Schema Requirements (Table, Column, Type, Default)
+    required_columns = [
+        # Users
+        ("users", "api_key", "TEXT"), ("users", "credits", "INTEGER"), ("users", "expiry_date", "TEXT"),
+        ("users", "is_active", "INTEGER"), ("users", "created_at", "TEXT"), ("users", "plan", "TEXT DEFAULT 'Standard'"),
+        ("users", "custom_limit", "INTEGER DEFAULT NULL"), ("users", "custom_cost_2", "INTEGER DEFAULT NULL"),
+        ("users", "custom_cost_pro", "INTEGER DEFAULT NULL"), ("users", "assigned_api_key", "TEXT DEFAULT NULL"),
+        ("users", "last_seen", "TEXT"), ("users", "session_minutes", "INTEGER DEFAULT 0"), ("users", "daily_stats", "TEXT DEFAULT '{}'"),
+        # Logs
+        ("logs", "username", "TEXT"), ("logs", "action", "TEXT"), ("logs", "cost", "INTEGER"), 
+        ("logs", "timestamp", "TEXT"), ("logs", "status", "TEXT"),
+        # Vouchers
+        ("vouchers", "amount", "INTEGER"), ("vouchers", "max_uses", "INTEGER DEFAULT 1"), 
+        ("vouchers", "current_uses", "INTEGER DEFAULT 0"), ("vouchers", "expiry_date", "TEXT"), ("vouchers", "created_at", "TEXT"),
+        # Voucher Usage
+        ("voucher_usage", "code", "TEXT"), ("voucher_usage", "username", "TEXT"), ("voucher_usage", "used_at", "TEXT"),
+        # Tasks
+        ("tasks", "username", "TEXT"), ("tasks", "cost", "INTEGER"), ("tasks", "status", "TEXT"), 
+        ("tasks", "created_at", "TEXT"), ("tasks", "model", "TEXT"),
+        # Banned IPs
+        ("banned_ips", "reason", "TEXT"), ("banned_ips", "banned_at", "TEXT"),
+        # API Keys
+        ("api_keys", "label", "TEXT"), ("api_keys", "is_active", "INTEGER DEFAULT 1"), ("api_keys", "error_count", "INTEGER DEFAULT 0")
+    ]
 
-    # 4. Vouchers Table
-    c.execute('''CREATE TABLE IF NOT EXISTS vouchers
-                 (code TEXT PRIMARY KEY, amount INTEGER, max_uses INTEGER DEFAULT 1, current_uses INTEGER DEFAULT 0, 
-                  expiry_date TEXT, created_at TEXT)''')
-    
-    # 5. Voucher Usage
-    c.execute('''CREATE TABLE IF NOT EXISTS voucher_usage
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, username TEXT, used_at TEXT)''')
+    # 3. Check and Add Missing Columns (Safe Migration)
+    for table, col, dtype in required_columns:
+        try:
+            # Check if column exists
+            c.execute(f"SELECT {col} FROM {table} LIMIT 1")
+        except sqlite3.OperationalError:
+            # Column doesn't exist, add it
+            try:
+                print(f"Migrating: Adding {col} to {table}...")
+                c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {dtype}")
+            except Exception as e:
+                print(f"Migration failed for {table}.{col}: {e}")
 
-    # 6. Tasks
-    c.execute('''CREATE TABLE IF NOT EXISTS tasks
-                 (task_id TEXT PRIMARY KEY, username TEXT, cost INTEGER, status TEXT, created_at TEXT, model TEXT)''')
-
-    # 7. Banned IPs
-    c.execute('''CREATE TABLE IF NOT EXISTS banned_ips
-                 (ip TEXT PRIMARY KEY, reason TEXT, banned_at TEXT)''')
-    
-    # 8. API Keys
-    c.execute('''CREATE TABLE IF NOT EXISTS api_keys
-                 (key_value TEXT PRIMARY KEY, label TEXT, is_active INTEGER DEFAULT 1, error_count INTEGER DEFAULT 0)''')
-
-    # Default Settings
+    # 4. Insert Default Settings
     defaults = {
         'cost_sora_2': '25', 'cost_sora_2_pro': '35',
         'limit_mini': '1', 'limit_basic': '2', 'limit_standard': '3', 'limit_premium': '5',
@@ -87,29 +94,12 @@ def init_db():
     for k, v in defaults.items():
         try: c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
         except: pass
-    
-    # --- MIGRATIONS (Auto-Fix Missing Columns) ---
-    migrations = [
-        ("users", "plan", "TEXT DEFAULT 'Standard'"),
-        ("users", "custom_limit", "INTEGER DEFAULT NULL"),
-        ("users", "custom_cost_2", "INTEGER DEFAULT NULL"),
-        ("users", "custom_cost_pro", "INTEGER DEFAULT NULL"),
-        ("users", "assigned_api_key", "TEXT DEFAULT NULL"),
-        ("users", "last_seen", "TEXT"),
-        ("users", "session_minutes", "INTEGER DEFAULT 0"),
-        ("users", "daily_stats", "TEXT DEFAULT '{}'"),
-        ("logs", "status", "TEXT"),
-        ("api_keys", "error_count", "INTEGER DEFAULT 0") # Fix for your specific error
-    ]
-    
-    for table, col, dtype in migrations:
-        try: c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {dtype}")
-        except: pass
 
     conn.commit()
     conn.close()
 
-init_db()
+# Run Auto-Repair on Start
+init_and_migrate_db()
 
 # --- HELPER FUNCTIONS ---
 def get_setting(key, default=None):
@@ -196,12 +186,12 @@ MODERN_DASHBOARD_HTML = """
 </head>
 <body class="flex h-screen bg-slate-50 text-slate-800 font-sans overflow-hidden">
 
-    <!-- Toast -->
-    <div id="toast-container" class="bg-slate-800 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 border border-slate-700">
-        <i class="fas fa-check-circle text-emerald-400 text-xl"></i>
+    <!-- Toast Notification -->
+    <div id="toast-container" class="bg-slate-900 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 border border-slate-700 min-w-[300px]">
+        <div class="bg-emerald-500 rounded-full p-1"><i class="fas fa-check text-white text-xs"></i></div>
         <div>
-            <h4 class="font-bold text-sm">Success</h4>
-            <p class="text-xs text-slate-300" id="toast-message">Action completed successfully.</p>
+            <h4 class="font-bold text-sm">ជោគជ័យ (Success)</h4>
+            <p class="text-xs text-slate-400" id="toast-message">ប្រតិបត្តិការបានជោគជ័យ!</p>
         </div>
     </div>
 
@@ -227,9 +217,9 @@ MODERN_DASHBOARD_HTML = """
     <main class="flex-1 overflow-y-auto relative bg-slate-50">
         <header class="bg-white/80 backdrop-blur-md sticky top-0 z-10 border-b border-slate-200 px-8 py-4 flex justify-between items-center">
             <h2 class="text-xl font-bold text-slate-800">
-                {% if page == 'users' %}👥 គ្រប់គ្រងអ្នកប្រើប្រាស់
-                {% elif page == 'vouchers' %}🎫 ប័ណ្ណបញ្ចូលលុយ
-                {% elif page == 'api_keys' %}🔑 API Keys
+                {% if page == 'users' %}👥 គ្រប់គ្រងអ្នកប្រើប្រាស់ (User Management)
+                {% elif page == 'vouchers' %}🎫 ប័ណ្ណបញ្ចូលលុយ (Vouchers)
+                {% elif page == 'api_keys' %}🔑 គ្រប់គ្រង API Keys
                 {% elif page == 'logs' %}📜 កំណត់ត្រាសកម្មភាព
                 {% else %}⚙️ ការកំណត់ប្រព័ន្ធ{% endif %}
             </h2>
@@ -239,22 +229,22 @@ MODERN_DASHBOARD_HTML = """
         <div class="p-8 max-w-7xl mx-auto">
             {% if page == 'users' %}
             
-            <!-- Plan Stats Cards -->
+            <!-- Plan Stats Cards (NEW) -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                <div class="bg-white p-4 rounded-xl shadow-sm border border-l-4 border-purple-500">
-                    <p class="text-xs text-slate-400 font-bold uppercase">Premium Users</p>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-l-4 border-purple-500 hover:shadow-md transition">
+                    <p class="text-xs text-slate-400 font-bold uppercase mb-1">Premium Users</p>
                     <h3 class="text-2xl font-bold text-slate-800">{{ stats.Premium }} <span class="text-xs font-normal text-slate-400">users</span></h3>
                 </div>
-                <div class="bg-white p-4 rounded-xl shadow-sm border border-l-4 border-blue-500">
-                    <p class="text-xs text-slate-400 font-bold uppercase">Standard Users</p>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-l-4 border-blue-500 hover:shadow-md transition">
+                    <p class="text-xs text-slate-400 font-bold uppercase mb-1">Standard Users</p>
                     <h3 class="text-2xl font-bold text-slate-800">{{ stats.Standard }} <span class="text-xs font-normal text-slate-400">users</span></h3>
                 </div>
-                <div class="bg-white p-4 rounded-xl shadow-sm border border-l-4 border-emerald-500">
-                    <p class="text-xs text-slate-400 font-bold uppercase">Basic Users</p>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-l-4 border-emerald-500 hover:shadow-md transition">
+                    <p class="text-xs text-slate-400 font-bold uppercase mb-1">Basic Users</p>
                     <h3 class="text-2xl font-bold text-slate-800">{{ stats.Basic }} <span class="text-xs font-normal text-slate-400">users</span></h3>
                 </div>
-                <div class="bg-white p-4 rounded-xl shadow-sm border border-l-4 border-slate-400">
-                    <p class="text-xs text-slate-400 font-bold uppercase">Mini Users</p>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-l-4 border-slate-400 hover:shadow-md transition">
+                    <p class="text-xs text-slate-400 font-bold uppercase mb-1">Mini Users</p>
                     <h3 class="text-2xl font-bold text-slate-800">{{ stats.Mini }} <span class="text-xs font-normal text-slate-400">users</span></h3>
                 </div>
             </div>
@@ -291,7 +281,7 @@ MODERN_DASHBOARD_HTML = """
                             <td class="px-6 py-4">
                                 <div class="font-bold text-slate-700 text-base flex items-center gap-2">
                                     {{ user.username }} 
-                                    <button onclick="event.stopPropagation(); copyUserInfo('{{user.username}}', '{{user.api_key}}', '{{user.plan}}', '{{user.credits}}', '{{user.expiry}}')" class="text-slate-400 hover:text-primary p-1 bg-slate-100 rounded text-xs" title="Copy Info"><i class="fas fa-copy"></i></button>
+                                    <button onclick="event.stopPropagation(); copyUserInfo('{{user.username}}', '{{user.api_key}}', '{{user.plan}}', '{{user.credits}}', '{{user.expiry_date}}')" class="text-slate-400 hover:text-primary p-1 bg-slate-100 rounded text-xs transition" title="Copy Info"><i class="fas fa-copy"></i></button>
                                 </div>
                                 <div class="font-mono text-xs text-slate-400 mt-1">{{ user.api_key }}</div>
                             </td>
@@ -308,7 +298,10 @@ MODERN_DASHBOARD_HTML = """
                                     <span class="font-bold text-lg {{ 'text-red-600 animate-pulse' if user.credits < 50 else 'text-emerald-600' }}">{{ user.credits }}</span>
                                     <span class="text-xs text-slate-400">credits</span>
                                 </div>
-                                <span class="px-2 py-0.5 rounded border text-xs font-bold bg-slate-50 border-slate-200">{{ user.plan }}</span>
+                                <span class="px-2 py-0.5 rounded border text-xs font-bold 
+                                    {% if user.plan == 'Premium' %}bg-purple-100 text-purple-600 border-purple-200
+                                    {% elif user.plan == 'Standard' %}bg-blue-100 text-blue-600 border-blue-200
+                                    {% else %}bg-slate-50 text-slate-600 border-slate-200{% endif %}">{{ user.plan }}</span>
                             </td>
                             <td class="px-6 py-4 text-right"><button class="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100 font-bold text-xs">Manage</button></td>
                         </tr>
@@ -334,7 +327,7 @@ MODERN_DASHBOARD_HTML = """
                     <tbody class="divide-y divide-slate-100">
                         {% for v in vouchers %}
                         <tr>
-                            <td class="px-6 py-3 font-mono font-bold">{{ v.code }}</td>
+                            <td class="px-6 py-3 font-mono font-bold select-all">{{ v.code }}</td>
                             <td class="px-6 py-3 font-bold text-emerald-600">+{{ v.amount }}</td>
                             <td class="px-6 py-3">{{ v.current_uses }} / {{ v.max_uses }}</td>
                             <td class="px-6 py-3 text-xs">{{ v.expiry_date if v.expiry_date else '-' }}</td>
@@ -388,7 +381,7 @@ MODERN_DASHBOARD_HTML = """
 
             {% elif page == 'settings' %}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- Update System -->
+                <!-- Update System (Restored) -->
                 <div class="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-xl p-6 text-white shadow-xl md:col-span-2">
                     <h4 class="font-bold text-lg mb-4 flex items-center gap-2"><i class="fas fa-cloud-upload-alt"></i> ប្រព័ន្ធអាប់ដេត (ZIP/URL Update)</h4>
                     <form action="/update_settings" method="POST" class="space-y-4">
@@ -405,7 +398,7 @@ MODERN_DASHBOARD_HTML = """
                     </form>
                 </div>
 
-                 <!-- Broadcast -->
+                 <!-- Broadcast (Restored) -->
                 <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                     <h4 class="font-bold text-slate-700 mb-4 pb-2 border-b">📢 ផ្សព្វផ្សាយដំណឹង (Broadcast)</h4>
                     <form action="/update_broadcast" method="POST" class="space-y-3">
@@ -481,7 +474,12 @@ MODERN_DASHBOARD_HTML = """
         }
 
         function copyUserInfo(user, key, plan, credits, expiry) {
-            const text = `ឈ្មោះគណនីអ្នកប្រើប្រាស់: ${user}\\nលេដកូដសម្រាប់បើកដំណើរការ: ${key}\\nប្រភេទគណនី: ${plan}\\nចំនួនក្រេដីត: ${credits}\\nរយៈពេលប្រើប្រាស់: ${expiry}`;
+            const text = "ឈ្មោះគណនីអ្នកប្រើប្រាស់: " + user + "\\n" +
+                         "លេដកូដសម្រាប់បើកដំណើរការ: " + key + "\\n" +
+                         "ប្រភេទគណនី: " + plan + "\\n" +
+                         "ចំនួនក្រេដីត: " + credits + "\\n" +
+                         "រយៈពេលប្រើប្រាស់: " + expiry;
+            
             navigator.clipboard.writeText(text).then(() => { showToast("បានចម្លងព័ត៌មានគណនីរួចរាល់!"); });
         }
 
@@ -529,7 +527,7 @@ def login():
         if request.form.get('password') == ADMIN_PASSWORD:
             session['logged_in'] = True
             return redirect('/dashboard')
-    return render_template_string(LOGIN_HTML)
+    return render_template_string("""<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Login</title><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-slate-100 h-screen flex items-center justify-center"><div class="bg-white p-8 rounded-xl shadow-xl w-96 border border-slate-200"><h2 class="text-2xl font-bold text-slate-800 mb-6 text-center">Admin Access</h2><form method="POST" class="space-y-4"><input type="password" name="password" placeholder="Password" class="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" required><button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg">Login</button></form></div></body></html>""")
 
 @app.route('/logout')
 def logout(): session.pop('logged_in', None); return redirect(f'/{ADMIN_LOGIN_PATH}')
@@ -542,7 +540,6 @@ def dashboard():
     users_raw = conn.execute("SELECT * FROM users ORDER BY created_at DESC").fetchall()
     users = [dict(u) for u in users_raw]
     
-    # Calculate Stats
     stats = {'Premium': 0, 'Standard': 0, 'Basic': 0, 'Mini': 0}
     for u in users:
         p = u.get('plan', 'Standard')
