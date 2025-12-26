@@ -14,7 +14,7 @@ from functools import wraps
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET", "super_secret_admin_key_v4")
+app.secret_key = os.environ.get("FLASK_SECRET", "super_secret_admin_key_v5")
 
 # --- CONFIGURATION ---
 DB_PATH = os.environ.get("DATABASE_PATH", "users.db")
@@ -28,7 +28,6 @@ suspicious_tracker = {}
 # --- DATABASE SETUP ---
 def get_db():
     conn = sqlite3.connect(DB_PATH)
-    # Return rows as dictionaries for easier access
     conn.row_factory = sqlite3.Row 
     return conn
 
@@ -36,7 +35,7 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
-    # Users Table
+    # 1. Users Table
     c.execute('''CREATE TABLE IF NOT EXISTS users
                  (username TEXT PRIMARY KEY, api_key TEXT, credits INTEGER, expiry_date TEXT, 
                   is_active INTEGER, created_at TEXT, plan TEXT DEFAULT 'Standard',
@@ -48,52 +47,49 @@ def init_db():
                   session_minutes INTEGER DEFAULT 0,
                   daily_stats TEXT DEFAULT '{}')''')
 
-    # Logs Table
+    # 2. Logs Table
     c.execute('''CREATE TABLE IF NOT EXISTS logs
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, action TEXT, cost INTEGER, timestamp TEXT, status TEXT)''')
     
-    # Settings Table
+    # 3. Settings Table
     c.execute('''CREATE TABLE IF NOT EXISTS settings
                  (key TEXT PRIMARY KEY, value TEXT)''')
 
-    # Vouchers Table
+    # 4. Vouchers Table
     c.execute('''CREATE TABLE IF NOT EXISTS vouchers
                  (code TEXT PRIMARY KEY, amount INTEGER, max_uses INTEGER DEFAULT 1, current_uses INTEGER DEFAULT 0, 
                   expiry_date TEXT, created_at TEXT)''')
     
-    # Voucher Usage Tracking
+    # 5. Voucher Usage
     c.execute('''CREATE TABLE IF NOT EXISTS voucher_usage
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, username TEXT, used_at TEXT)''')
 
-    # Tasks Table
+    # 6. Tasks
     c.execute('''CREATE TABLE IF NOT EXISTS tasks
                  (task_id TEXT PRIMARY KEY, username TEXT, cost INTEGER, status TEXT, created_at TEXT, model TEXT)''')
 
-    # Banned IPs
+    # 7. Banned IPs
     c.execute('''CREATE TABLE IF NOT EXISTS banned_ips
                  (ip TEXT PRIMARY KEY, reason TEXT, banned_at TEXT)''')
     
-    # API Keys Pool
+    # 8. API Keys
     c.execute('''CREATE TABLE IF NOT EXISTS api_keys
                  (key_value TEXT PRIMARY KEY, label TEXT, is_active INTEGER DEFAULT 1, error_count INTEGER DEFAULT 0)''')
 
-    # Defaults
+    # Default Settings
     defaults = {
         'cost_sora_2': '25', 'cost_sora_2_pro': '35',
         'limit_mini': '1', 'limit_basic': '2', 'limit_standard': '3', 'limit_premium': '5',
-        'broadcast_msg': '',
-        'broadcast_color': '#FF0000',
-        'latest_version': '1.0.0',
-        'update_desc': 'Initial Release',
-        'update_is_live': '0',
-        'update_url': ''
+        'broadcast_msg': '', 'broadcast_color': '#FF0000',
+        'latest_version': '1.0.0', 'update_desc': 'Initial Release',
+        'update_is_live': '0', 'update_url': ''
     }
     for k, v in defaults.items():
         try: c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
         except: pass
     
-    # Migrations (Safe column additions)
-    columns_to_add = [
+    # --- MIGRATIONS (Auto-Fix Missing Columns) ---
+    migrations = [
         ("users", "plan", "TEXT DEFAULT 'Standard'"),
         ("users", "custom_limit", "INTEGER DEFAULT NULL"),
         ("users", "custom_cost_2", "INTEGER DEFAULT NULL"),
@@ -102,10 +98,11 @@ def init_db():
         ("users", "last_seen", "TEXT"),
         ("users", "session_minutes", "INTEGER DEFAULT 0"),
         ("users", "daily_stats", "TEXT DEFAULT '{}'"),
-        ("logs", "status", "TEXT")
+        ("logs", "status", "TEXT"),
+        ("api_keys", "error_count", "INTEGER DEFAULT 0") # Fix for your specific error
     ]
     
-    for table, col, dtype in columns_to_add:
+    for table, col, dtype in migrations:
         try: c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {dtype}")
         except: pass
 
@@ -137,19 +134,15 @@ def get_client_ip():
 
 def get_active_api_key(username=None):
     conn = get_db()
-    # 1. Check if user has assigned key
     if username:
         user = conn.execute("SELECT assigned_api_key FROM users WHERE username=?", (username,)).fetchone()
         if user and user['assigned_api_key']:
-            conn.close()
-            return user['assigned_api_key']
-    
-    # 2. Get random active key from pool
+            conn.close(); return user['assigned_api_key']
     keys = conn.execute("SELECT key_value FROM api_keys WHERE is_active=1 ORDER BY RANDOM() LIMIT 1").fetchone()
     conn.close()
     return keys['key_value'] if keys else None
 
-# --- SECURITY MIDDLEWARE ---
+# --- SECURITY ---
 @app.before_request
 def security_guard():
     ip = get_client_ip()
@@ -165,14 +158,13 @@ def security_guard():
     if current_count >= MAX_SUSPICIOUS_ATTEMPTS:
         try:
             conn = get_db()
-            conn.execute("INSERT OR IGNORE INTO banned_ips (ip, reason, banned_at) VALUES (?, ?, ?)", 
-                         (ip, f"Excessive scanning: {request.path}", str(datetime.now())))
+            conn.execute("INSERT OR IGNORE INTO banned_ips (ip, reason, banned_at) VALUES (?, ?, ?)", (ip, f"Excessive scanning: {request.path}", str(datetime.now())))
             conn.commit(); conn.close()
         except: pass
         return jsonify({"code": 403, "message": "Access Denied"}), 403
     return "Not Found", 404
 
-# --- MODERN DASHBOARD HTML ---
+# --- DASHBOARD HTML ---
 MODERN_DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html lang="km">
@@ -184,48 +176,47 @@ MODERN_DASHBOARD_HTML = """
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        tailwind.config = {
-            theme: { extend: { fontFamily: { sans: ['"Kantumruy Pro"', 'sans-serif'] }, colors: { primary: '#6366f1', dark: '#0f172a' } } }
-        }
+        tailwind.config = { theme: { extend: { fontFamily: { sans: ['"Kantumruy Pro"', 'sans-serif'] }, colors: { primary: '#6366f1', dark: '#0f172a' } } } }
     </script>
     <style>
         .sidebar-link.active { background-color: #6366f1; color: white; }
         .modal { transition: opacity 0.25s ease; }
-        body.modal-active { overflow-x: hidden; overflow-y: hidden !important; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        body.modal-active { overflow: hidden; }
         .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .4s; border-radius: 20px; }
         .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
         input:checked + .slider { background-color: #10b981; }
         input:checked + .slider:before { transform: translateX(20px); }
+        
+        /* Toast Notification */
+        #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 100; transform: translateY(100px); opacity: 0; transition: all 0.5s ease; }
+        #toast-container.show { transform: translateY(0); opacity: 1; }
     </style>
 </head>
 <body class="flex h-screen bg-slate-50 text-slate-800 font-sans overflow-hidden">
+
+    <!-- Toast -->
+    <div id="toast-container" class="bg-slate-800 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 border border-slate-700">
+        <i class="fas fa-check-circle text-emerald-400 text-xl"></i>
+        <div>
+            <h4 class="font-bold text-sm">Success</h4>
+            <p class="text-xs text-slate-300" id="toast-message">Action completed successfully.</p>
+        </div>
+    </div>
 
     <!-- Sidebar -->
     <aside class="w-64 bg-white border-r border-slate-200 flex flex-col z-20 shadow-xl hidden md:flex">
         <div class="h-16 flex items-center px-6 border-b border-slate-100">
             <i class="fas fa-cube text-primary text-2xl mr-3"></i>
-            <span class="text-xl font-bold tracking-tight text-slate-800">SoraAdmin</span>
+            <span class="text-xl font-bold text-slate-800">SoraAdmin</span>
         </div>
         <nav class="flex-1 overflow-y-auto py-6 px-3 space-y-1">
-            <a href="/dashboard" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'users' else '' }}">
-                <i class="fas fa-users w-8 text-center"></i> <span class="font-medium">អ្នកប្រើប្រាស់</span>
-            </a>
-            <a href="/vouchers" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'vouchers' else '' }}">
-                <i class="fas fa-ticket-alt w-8 text-center"></i> <span class="font-medium">ប័ណ្ណបញ្ចូលលុយ</span>
-            </a>
-            <a href="/api_keys" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'api_keys' else '' }}">
-                <i class="fas fa-key w-8 text-center"></i> <span class="font-medium">API Keys</span>
-            </a>
-            <a href="/logs" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'logs' else '' }}">
-                <i class="fas fa-list-alt w-8 text-center"></i> <span class="font-medium">កំណត់ត្រា</span>
-            </a>
-            <a href="/settings" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'settings' else '' }}">
-                <i class="fas fa-cogs w-8 text-center"></i> <span class="font-medium">ការកំណត់</span>
-            </a>
+            <a href="/dashboard" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'users' else '' }}"><i class="fas fa-users w-8 text-center"></i> <span class="font-medium">អ្នកប្រើប្រាស់</span></a>
+            <a href="/vouchers" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'vouchers' else '' }}"><i class="fas fa-ticket-alt w-8 text-center"></i> <span class="font-medium">ប័ណ្ណបញ្ចូលលុយ</span></a>
+            <a href="/api_keys" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'api_keys' else '' }}"><i class="fas fa-key w-8 text-center"></i> <span class="font-medium">API Keys</span></a>
+            <a href="/logs" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'logs' else '' }}"><i class="fas fa-list-alt w-8 text-center"></i> <span class="font-medium">កំណត់ត្រា</span></a>
+            <a href="/settings" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'settings' else '' }}"><i class="fas fa-cogs w-8 text-center"></i> <span class="font-medium">ការកំណត់</span></a>
         </nav>
         <div class="p-4 border-t border-slate-100">
             <a href="/logout" class="flex items-center justify-center w-full px-4 py-2 bg-red-50 text-red-600 rounded-lg font-bold hover:bg-red-100 transition"><i class="fas fa-sign-out-alt mr-2"></i> ចាកចេញ</a>
@@ -237,26 +228,43 @@ MODERN_DASHBOARD_HTML = """
         <header class="bg-white/80 backdrop-blur-md sticky top-0 z-10 border-b border-slate-200 px-8 py-4 flex justify-between items-center">
             <h2 class="text-xl font-bold text-slate-800">
                 {% if page == 'users' %}👥 គ្រប់គ្រងអ្នកប្រើប្រាស់
-                {% elif page == 'vouchers' %}🎫 ប័ណ្ណបញ្ចូលលុយ (Vouchers)
-                {% elif page == 'api_keys' %}🔑 គ្រប់គ្រង API Keys
+                {% elif page == 'vouchers' %}🎫 ប័ណ្ណបញ្ចូលលុយ
+                {% elif page == 'api_keys' %}🔑 API Keys
                 {% elif page == 'logs' %}📜 កំណត់ត្រាសកម្មភាព
                 {% else %}⚙️ ការកំណត់ប្រព័ន្ធ{% endif %}
             </h2>
-            <div class="flex items-center gap-3">
-                <span class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span class="text-xs font-bold text-emerald-600">System Live</span>
-            </div>
+            <div class="flex items-center gap-3"><span class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span><span class="text-xs font-bold text-emerald-600">System Live</span></div>
         </header>
 
         <div class="p-8 max-w-7xl mx-auto">
             {% if page == 'users' %}
             
+            <!-- Plan Stats Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-l-4 border-purple-500">
+                    <p class="text-xs text-slate-400 font-bold uppercase">Premium Users</p>
+                    <h3 class="text-2xl font-bold text-slate-800">{{ stats.Premium }} <span class="text-xs font-normal text-slate-400">users</span></h3>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-l-4 border-blue-500">
+                    <p class="text-xs text-slate-400 font-bold uppercase">Standard Users</p>
+                    <h3 class="text-2xl font-bold text-slate-800">{{ stats.Standard }} <span class="text-xs font-normal text-slate-400">users</span></h3>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-l-4 border-emerald-500">
+                    <p class="text-xs text-slate-400 font-bold uppercase">Basic Users</p>
+                    <h3 class="text-2xl font-bold text-slate-800">{{ stats.Basic }} <span class="text-xs font-normal text-slate-400">users</span></h3>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-l-4 border-slate-400">
+                    <p class="text-xs text-slate-400 font-bold uppercase">Mini Users</p>
+                    <h3 class="text-2xl font-bold text-slate-800">{{ stats.Mini }} <span class="text-xs font-normal text-slate-400">users</span></h3>
+                </div>
+            </div>
+
             <!-- Add User Form -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-8">
                 <h3 class="font-bold text-slate-700 mb-4 flex items-center gap-2"><i class="fas fa-user-plus text-primary"></i> បង្កើតគណនីថ្មី</h3>
                 <form action="/add_user" method="POST" class="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
-                    <div class="col-span-1"><label class="text-xs font-bold text-slate-500">Username</label><input type="text" name="username" class="w-full mt-1 px-3 py-2 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-primary outline-none" required></div>
-                    <div class="col-span-1"><label class="text-xs font-bold text-slate-500">Credits</label><input type="number" name="credits" class="w-full mt-1 px-3 py-2 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-primary outline-none" value="100" required></div>
+                    <div class="col-span-1"><label class="text-xs font-bold text-slate-500">Username</label><input type="text" name="username" class="w-full mt-1 px-3 py-2 bg-slate-50 border rounded-lg" required></div>
+                    <div class="col-span-1"><label class="text-xs font-bold text-slate-500">Credits</label><input type="number" name="credits" class="w-full mt-1 px-3 py-2 bg-slate-50 border rounded-lg" value="100" required></div>
                     <div class="col-span-1"><label class="text-xs font-bold text-slate-500">Plan</label>
                         <select name="plan" class="w-full mt-1 px-3 py-2 bg-slate-50 border rounded-lg">
                             <option value="Mini">Mini</option><option value="Basic">Basic</option><option value="Standard">Standard</option><option value="Premium" selected>Premium</option>
@@ -275,49 +283,38 @@ MODERN_DASHBOARD_HTML = """
 
             <!-- Users Table -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm text-left">
-                        <thead class="bg-slate-50 text-slate-500 text-xs uppercase border-b">
-                            <tr>
-                                <th class="px-6 py-4">User Info</th>
-                                <th class="px-6 py-4">Status & Activity</th>
-                                <th class="px-6 py-4">Plan & Credits</th>
-                                <th class="px-6 py-4 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            {% for user in users %}
-                            <tr class="hover:bg-slate-50 group transition cursor-pointer" onclick="openUserModal({{ user | tojson | forceescape }})">
-                                <td class="px-6 py-4">
-                                    <div class="font-bold text-slate-700 text-base flex items-center gap-2">
-                                        {{ user.username }} 
-                                        <button onclick="event.stopPropagation(); copyUserInfo('{{user.username}}', '{{user.api_key}}', '{{user.plan}}', '{{user.credits}}', '{{user.expiry}}')" class="text-slate-400 hover:text-primary p-1 bg-slate-100 rounded text-xs" title="Copy Info"><i class="fas fa-copy"></i></button>
-                                    </div>
-                                    <div class="font-mono text-xs text-slate-400 mt-1">{{ user.api_key }}</div>
-                                </td>
-                                <td class="px-6 py-4">
-                                    <div class="flex items-center gap-2 mb-1">
-                                        {% if user.is_active == 1 %}<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600 text-xs font-bold">Active</span>
-                                        {% elif user.is_active == 2 %}<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-600 text-xs font-bold">Suspended</span>
-                                        {% else %}<span class="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-bold">Banned</span>{% endif %}
-                                    </div>
-                                    <div class="text-xs text-slate-500">Last seen: {{ user.last_seen if user.last_seen else 'Never' }}</div>
-                                </td>
-                                <td class="px-6 py-4">
-                                    <div class="flex items-center gap-2">
-                                        <span class="font-bold text-lg {{ 'text-red-600 animate-pulse' if user.credits < 50 else 'text-emerald-600' }}">{{ user.credits }}</span>
-                                        <span class="text-xs text-slate-400">credits</span>
-                                    </div>
-                                    <span class="px-2 py-0.5 rounded border text-xs font-bold bg-slate-50 border-slate-200">{{ user.plan }}</span>
-                                </td>
-                                <td class="px-6 py-4 text-right">
-                                    <button class="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100 font-bold text-xs">Manage</button>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-slate-50 text-slate-500 text-xs uppercase border-b"><tr><th class="px-6 py-4">User Info</th><th class="px-6 py-4">Status & Activity</th><th class="px-6 py-4">Plan & Credits</th><th class="px-6 py-4 text-right">Actions</th></tr></thead>
+                    <tbody class="divide-y divide-slate-100">
+                        {% for user in users %}
+                        <tr class="hover:bg-slate-50 group transition cursor-pointer" onclick="openUserModal({{ user | tojson | forceescape }})">
+                            <td class="px-6 py-4">
+                                <div class="font-bold text-slate-700 text-base flex items-center gap-2">
+                                    {{ user.username }} 
+                                    <button onclick="event.stopPropagation(); copyUserInfo('{{user.username}}', '{{user.api_key}}', '{{user.plan}}', '{{user.credits}}', '{{user.expiry}}')" class="text-slate-400 hover:text-primary p-1 bg-slate-100 rounded text-xs" title="Copy Info"><i class="fas fa-copy"></i></button>
+                                </div>
+                                <div class="font-mono text-xs text-slate-400 mt-1">{{ user.api_key }}</div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-2 mb-1">
+                                    {% if user.is_active == 1 %}<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600 text-xs font-bold">Active</span>
+                                    {% elif user.is_active == 2 %}<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-600 text-xs font-bold">Suspended</span>
+                                    {% else %}<span class="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-bold">Banned</span>{% endif %}
+                                </div>
+                                <div class="text-xs text-slate-500">Last seen: {{ user.last_seen if user.last_seen else 'Never' }}</div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-bold text-lg {{ 'text-red-600 animate-pulse' if user.credits < 50 else 'text-emerald-600' }}">{{ user.credits }}</span>
+                                    <span class="text-xs text-slate-400">credits</span>
+                                </div>
+                                <span class="px-2 py-0.5 rounded border text-xs font-bold bg-slate-50 border-slate-200">{{ user.plan }}</span>
+                            </td>
+                            <td class="px-6 py-4 text-right"><button class="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100 font-bold text-xs">Manage</button></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
 
             {% elif page == 'vouchers' %}
@@ -383,29 +380,57 @@ MODERN_DASHBOARD_HTML = """
                     <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th class="px-6 py-3">Time</th><th class="px-6 py-3">User</th><th class="px-6 py-3">Action</th><th class="px-6 py-3">Cost</th><th class="px-6 py-3">Status</th></tr></thead>
                     <tbody class="divide-y divide-slate-100">
                         {% for l in logs %}
-                        <tr>
-                            <td class="px-6 py-3 text-xs text-slate-400 font-mono">{{ l.timestamp }}</td>
-                            <td class="px-6 py-3 font-bold">{{ l.username }}</td>
-                            <td class="px-6 py-3">{{ l.action }}</td>
-                            <td class="px-6 py-3 font-bold text-red-500">{{ l.cost }}</td>
-                            <td class="px-6 py-3 text-xs">{{ l.status }}</td>
-                        </tr>
+                        <tr><td class="px-6 py-3 text-xs text-slate-400 font-mono">{{ l.timestamp }}</td><td class="px-6 py-3 font-bold">{{ l.username }}</td><td class="px-6 py-3">{{ l.action }}</td><td class="px-6 py-3 font-bold text-red-500">{{ l.cost }}</td><td class="px-6 py-3 text-xs">{{ l.status }}</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
 
             {% elif page == 'settings' %}
-            <!-- Settings content from previous version (omitted for brevity, assume standard layout) -->
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                 <h4 class="font-bold text-slate-700 mb-4">System Settings</h4>
-                 <form action="/update_settings" method="POST" class="space-y-4">
-                     <div class="grid grid-cols-2 gap-4">
-                         <div><label class="text-xs font-bold text-slate-500">Sora-2 Cost</label><input type="number" name="cost_sora_2" value="{{ costs.sora_2 }}" class="w-full mt-1 border rounded p-2"></div>
-                         <div><label class="text-xs font-bold text-slate-500">Sora-2 Pro Cost</label><input type="number" name="cost_sora_2_pro" value="{{ costs.sora_2_pro }}" class="w-full mt-1 border rounded p-2"></div>
-                     </div>
-                     <button class="bg-primary text-white font-bold px-6 py-2 rounded">Save</button>
-                 </form>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Update System -->
+                <div class="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-xl p-6 text-white shadow-xl md:col-span-2">
+                    <h4 class="font-bold text-lg mb-4 flex items-center gap-2"><i class="fas fa-cloud-upload-alt"></i> ប្រព័ន្ធអាប់ដេត (ZIP/URL Update)</h4>
+                    <form action="/update_settings" method="POST" class="space-y-4">
+                        <div class="flex items-center justify-between bg-white/10 p-4 rounded-lg border border-white/20">
+                            <div><h5 class="font-bold">Enable Update Push</h5><p class="text-xs opacity-70">Client will auto-download and extract ZIP.</p></div>
+                            <label class="switch"><input type="checkbox" name="update_is_live" {% if update_is_live == '1' %}checked{% endif %}><span class="slider"></span></label>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="text-xs opacity-70 block mb-1">Latest Version</label><input type="text" name="latest_version" value="{{ latest_version }}" class="w-full bg-white/20 border border-white/30 rounded px-3 py-2 backdrop-blur outline-none"></div>
+                            <div><label class="text-xs opacity-70 block mb-1">ZIP Download URL</label><input type="text" name="update_url" value="{{ update_url }}" class="w-full bg-white/20 border border-white/30 rounded px-3 py-2 backdrop-blur outline-none" placeholder="https://mysite.com/update.zip"></div>
+                        </div>
+                        <div><label class="text-xs opacity-70 block mb-1">Description</label><textarea name="update_desc" class="w-full bg-white/20 border border-white/30 rounded px-3 py-2 backdrop-blur outline-none h-16">{{ update_desc }}</textarea></div>
+                        <button class="bg-white text-indigo-700 font-bold px-6 py-2 rounded shadow hover:bg-indigo-50 w-full">Save Update Config</button>
+                    </form>
+                </div>
+
+                 <!-- Broadcast -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                    <h4 class="font-bold text-slate-700 mb-4 pb-2 border-b">📢 ផ្សព្វផ្សាយដំណឹង (Broadcast)</h4>
+                    <form action="/update_broadcast" method="POST" class="space-y-3">
+                        <div class="flex gap-2">
+                            <input type="color" name="color" value="{{ broadcast_color }}" class="h-10 w-12 rounded border cursor-pointer">
+                            <input type="text" name="message" value="{{ broadcast_msg }}" placeholder="សរសេរដំណឹងនៅទីនេះ..." class="flex-1 border rounded px-3 outline-none">
+                        </div>
+                        <div class="flex gap-2">
+                            <button class="flex-1 bg-indigo-600 text-white font-bold py-2 rounded">Send Message</button>
+                            <a href="/clear_broadcast" class="px-4 py-2 bg-red-100 text-red-600 rounded font-bold">Clear</a>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Costs -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                     <h4 class="font-bold text-slate-700 mb-4 pb-2 border-b">System Costs & Limits</h4>
+                     <form action="/update_settings" method="POST" class="space-y-4">
+                         <div class="grid grid-cols-2 gap-4">
+                             <div><label class="text-xs font-bold text-slate-500">Sora-2 Cost</label><input type="number" name="cost_sora_2" value="{{ costs.sora_2 }}" class="w-full mt-1 border rounded p-2"></div>
+                             <div><label class="text-xs font-bold text-slate-500">Sora-2 Pro Cost</label><input type="number" name="cost_sora_2_pro" value="{{ costs.sora_2_pro }}" class="w-full mt-1 border rounded p-2"></div>
+                         </div>
+                         <button class="w-full bg-primary text-white font-bold px-6 py-2 rounded">Save Changes</button>
+                     </form>
+                </div>
             </div>
             {% endif %}
         </div>
@@ -414,95 +439,64 @@ MODERN_DASHBOARD_HTML = """
     <!-- User Management Modal -->
     <div id="userModal" class="modal opacity-0 pointer-events-none fixed w-full h-full top-0 left-0 flex items-center justify-center z-50">
         <div class="modal-overlay absolute w-full h-full bg-gray-900 opacity-50" onclick="closeUserModal()"></div>
-        
         <div class="modal-container bg-white w-11/12 md:max-w-2xl mx-auto rounded-xl shadow-2xl z-50 overflow-y-auto max-h-[90vh]">
             <div class="modal-content py-6 px-8 text-left">
-                <!-- Header -->
                 <div class="flex justify-between items-center pb-3 border-b">
                     <p class="text-2xl font-bold text-slate-800" id="modalUsername">User Settings</p>
-                    <div class="cursor-pointer z-50" onclick="closeUserModal()">
-                        <i class="fas fa-times text-slate-500 hover:text-red-500 text-xl"></i>
-                    </div>
+                    <div class="cursor-pointer z-50" onclick="closeUserModal()"><i class="fas fa-times text-slate-500 hover:text-red-500 text-xl"></i></div>
                 </div>
-
-                <!-- Body -->
                 <form action="/update_user_full" method="POST" class="mt-4 space-y-6">
                     <input type="hidden" name="username" id="modalHiddenUsername">
-                    
-                    <!-- Quick Actions -->
                     <div class="flex gap-2">
                         <a id="btnActive" href="#" class="flex-1 py-2 text-center rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 font-bold text-sm">Active</a>
                         <a id="btnSuspend" href="#" class="flex-1 py-2 text-center rounded bg-amber-50 text-amber-600 hover:bg-amber-100 font-bold text-sm">Suspend</a>
                         <a id="btnBan" href="#" class="flex-1 py-2 text-center rounded bg-red-50 text-red-600 hover:bg-red-100 font-bold text-sm">Ban</a>
                     </div>
-
-                    <!-- Plan & Credits -->
                     <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-xs font-bold text-slate-500 mb-1">User Plan</label>
-                            <select name="plan" id="modalPlan" class="w-full px-3 py-2 bg-slate-50 border rounded-lg">
-                                <option value="Mini">Mini</option><option value="Basic">Basic</option><option value="Standard">Standard</option><option value="Premium">Premium</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-500 mb-1">Add/Remove Credits</label>
-                            <input type="number" name="credit_adj" placeholder="+/- Amount" class="w-full px-3 py-2 bg-slate-50 border rounded-lg">
-                        </div>
+                        <div><label class="block text-xs font-bold text-slate-500 mb-1">User Plan</label><select name="plan" id="modalPlan" class="w-full px-3 py-2 bg-slate-50 border rounded-lg"><option value="Mini">Mini</option><option value="Basic">Basic</option><option value="Standard">Standard</option><option value="Premium">Premium</option></select></div>
+                        <div><label class="block text-xs font-bold text-slate-500 mb-1">Add/Remove Credits</label><input type="number" name="credit_adj" placeholder="+/- Amount" class="w-full px-3 py-2 bg-slate-50 border rounded-lg"></div>
                     </div>
-
-                    <!-- Custom Limits -->
                     <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <h5 class="font-bold text-sm text-slate-700 mb-3">Custom Override (Leave empty for default)</h5>
+                        <h5 class="font-bold text-sm text-slate-700 mb-3">Custom Override</h5>
                         <div class="grid grid-cols-3 gap-3">
-                            <div><label class="text-[10px] font-bold text-slate-400">Concurrency Limit</label><input type="number" name="custom_limit" id="modalLimit" class="w-full mt-1 border rounded p-1.5 text-sm"></div>
+                            <div><label class="text-[10px] font-bold text-slate-400">Concurrency</label><input type="number" name="custom_limit" id="modalLimit" class="w-full mt-1 border rounded p-1.5 text-sm"></div>
                             <div><label class="text-[10px] font-bold text-slate-400">Cost (Sora-2)</label><input type="number" name="custom_cost_2" id="modalCost2" class="w-full mt-1 border rounded p-1.5 text-sm"></div>
                             <div><label class="text-[10px] font-bold text-slate-400">Cost (Pro)</label><input type="number" name="custom_cost_pro" id="modalCostPro" class="w-full mt-1 border rounded p-1.5 text-sm"></div>
                         </div>
                     </div>
-
-                    <!-- API Key Assign -->
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 mb-1">Assigned API Key</label>
-                        <select name="assigned_key" id="modalAssignedKey" class="w-full px-3 py-2 bg-slate-50 border rounded-lg">
-                            <option value="">-- Use Pool (Default) --</option>
-                            {% if api_keys %}{% for k in api_keys %}<option value="{{ k.key_value }}">{{ k.label }}</option>{% endfor %}{% endif %}
-                        </select>
-                    </div>
-
-                    <!-- Footer Actions -->
-                    <div class="flex justify-end pt-4 border-t gap-3">
-                        <a id="btnDelete" href="#" onclick="return confirm('Delete user?')" class="px-4 py-2 text-red-500 hover:bg-red-50 rounded font-bold text-sm">Delete User</a>
-                        <button type="submit" class="px-6 py-2 bg-primary text-white rounded hover:bg-indigo-600 font-bold shadow">Save Changes</button>
-                    </div>
+                    <div><label class="block text-xs font-bold text-slate-500 mb-1">Assigned API Key</label><select name="assigned_key" id="modalAssignedKey" class="w-full px-3 py-2 bg-slate-50 border rounded-lg"><option value="">-- Use Pool (Default) --</option>{% if api_keys %}{% for k in api_keys %}<option value="{{ k.key_value }}">{{ k.label }}</option>{% endfor %}{% endif %}</select></div>
+                    <div class="flex justify-end pt-4 border-t gap-3"><a id="btnDelete" href="#" onclick="return confirm('Delete user?')" class="px-4 py-2 text-red-500 hover:bg-red-50 rounded font-bold text-sm">Delete User</a><button type="submit" class="px-6 py-2 bg-primary text-white rounded hover:bg-indigo-600 font-bold shadow">Save Changes</button></div>
                 </form>
             </div>
         </div>
     </div>
 
     <script>
+        function showToast(message) {
+            const toast = document.getElementById('toast-container');
+            const msg = document.getElementById('toast-message');
+            msg.innerText = message;
+            toast.classList.add('show');
+            setTimeout(() => { toast.classList.remove('show'); }, 3000);
+        }
+
         function copyUserInfo(user, key, plan, credits, expiry) {
-            const text = `ឈ្មោះគណនីអ្នកប្រើប្រាស់: ${user}\nលេដកូដសម្រាប់បើកដំណើរការ: ${key}\nប្រភេទគណនី: ${plan}\nចំនួនក្រេដីត: ${credits}\nរយៈពេលប្រើប្រាស់: ${expiry}`;
-            navigator.clipboard.writeText(text).then(() => { alert("Copied to Clipboard!"); });
+            const text = `ឈ្មោះគណនីអ្នកប្រើប្រាស់: ${user}\\nលេដកូដសម្រាប់បើកដំណើរការ: ${key}\\nប្រភេទគណនី: ${plan}\\nចំនួនក្រេដីត: ${credits}\\nរយៈពេលប្រើប្រាស់: ${expiry}`;
+            navigator.clipboard.writeText(text).then(() => { showToast("បានចម្លងព័ត៌មានគណនីរួចរាល់!"); });
         }
 
         function openUserModal(user) {
             document.getElementById('modalUsername').innerText = "Manage: " + user.username;
             document.getElementById('modalHiddenUsername').value = user.username;
-            
-            // Set Values
             document.getElementById('modalPlan').value = user.plan;
             document.getElementById('modalLimit').value = user.custom_limit || "";
             document.getElementById('modalCost2').value = user.custom_cost_2 || "";
             document.getElementById('modalCostPro').value = user.custom_cost_pro || "";
             document.getElementById('modalAssignedKey').value = user.assigned_api_key || "";
-            
-            // Set Links
             document.getElementById('btnActive').href = "/toggle_status/" + user.username + "/1";
             document.getElementById('btnSuspend').href = "/toggle_status/" + user.username + "/2";
             document.getElementById('btnBan').href = "/toggle_status/" + user.username + "/0";
             document.getElementById('btnDelete').href = "/delete_user/" + user.username;
-
-            // Show Modal
             const modal = document.getElementById('userModal');
             modal.classList.remove('opacity-0', 'pointer-events-none');
             document.body.classList.add('modal-active');
@@ -518,21 +512,7 @@ MODERN_DASHBOARD_HTML = """
 </html>
 """
 
-LOGIN_HTML = """
-<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Login</title><script src="https://cdn.tailwindcss.com"></script></head>
-<body class="bg-slate-100 h-screen flex items-center justify-center">
-    <div class="bg-white p-8 rounded-xl shadow-xl w-96 border border-slate-200">
-        <h2 class="text-2xl font-bold text-slate-800 mb-6 text-center">Admin Access</h2>
-        <form method="POST" class="space-y-4">
-            <input type="password" name="password" placeholder="Password" class="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" required>
-            <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg">Login</button>
-        </form>
-    </div>
-</body></html>
-"""
-
-# --- AUTH DECORATOR ---
+# --- AUTH & ROUTES ---
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -540,7 +520,6 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# --- ROUTES ---
 @app.route('/')
 def home(): return jsonify({"status": "Server Running", "secure": True}), 200
 
@@ -559,28 +538,28 @@ def logout(): session.pop('logged_in', None); return redirect(f'/{ADMIN_LOGIN_PA
 @login_required
 def dashboard():
     conn = get_db()
-    
-    # Fetch API Keys for Dropdowns
     api_keys = conn.execute("SELECT key_value, label FROM api_keys WHERE is_active=1").fetchall()
-    
-    # Fetch Users
     users_raw = conn.execute("SELECT * FROM users ORDER BY created_at DESC").fetchall()
-    users = [dict(u) for u in users_raw] # Convert to dict for JSON serialization in template
-
+    users = [dict(u) for u in users_raw]
+    
+    # Calculate Stats
+    stats = {'Premium': 0, 'Standard': 0, 'Basic': 0, 'Mini': 0}
+    for u in users:
+        p = u.get('plan', 'Standard')
+        if p in stats: stats[p] += 1
+        
     conn.close()
-    return render_template_string(MODERN_DASHBOARD_HTML, page='users', users=users, api_keys=api_keys)
+    return render_template_string(MODERN_DASHBOARD_HTML, page='users', users=users, api_keys=api_keys, stats=stats)
 
 @app.route('/vouchers')
 @login_required
 def vouchers():
     try:
         conn = get_db()
-        # Explicit column selection to prevent index errors
         v = conn.execute("SELECT code, amount, max_uses, current_uses, expiry_date FROM vouchers ORDER BY created_at DESC").fetchall()
         conn.close()
         return render_template_string(MODERN_DASHBOARD_HTML, page='vouchers', vouchers=v)
-    except Exception as e:
-        return f"Database Error: {e}", 500
+    except Exception as e: return f"DB Error: {e}", 500
 
 @app.route('/api_keys')
 @login_required
@@ -590,8 +569,7 @@ def view_keys():
         keys = conn.execute("SELECT key_value, label, is_active, error_count FROM api_keys").fetchall()
         conn.close()
         return render_template_string(MODERN_DASHBOARD_HTML, page='api_keys', api_keys=keys)
-    except Exception as e:
-        return f"Database Error: {e}", 500
+    except Exception as e: return f"DB Error: {e}", 500
 
 @app.route('/logs')
 @login_required
@@ -601,17 +579,25 @@ def view_logs():
         l = conn.execute("SELECT timestamp, username, action, cost, status FROM logs ORDER BY id DESC LIMIT 100").fetchall()
         conn.close()
         return render_template_string(MODERN_DASHBOARD_HTML, page='logs', logs=l)
-    except Exception as e:
-        return f"Database Error: {e}", 500
+    except Exception as e: return f"DB Error: {e}", 500
 
 @app.route('/settings')
 @login_required
 def settings():
+    latest_ver = get_setting('latest_version', '1.0.0')
+    update_desc = get_setting('update_desc', 'Initial Release')
+    update_is_live = get_setting('update_is_live', '0')
+    update_url = get_setting('update_url', '')
+    broadcast_msg = get_setting('broadcast_msg', '')
+    broadcast_color = get_setting('broadcast_color', '#FF0000')
     costs = {'sora_2': get_setting('cost_sora_2', 25), 'sora_2_pro': get_setting('cost_sora_2_pro', 35)}
-    return render_template_string(MODERN_DASHBOARD_HTML, page='settings', costs=costs)
+    
+    return render_template_string(MODERN_DASHBOARD_HTML, page='settings', costs=costs,
+                                  latest_version=latest_ver, update_desc=update_desc,
+                                  update_is_live=update_is_live, update_url=update_url,
+                                  broadcast_msg=broadcast_msg, broadcast_color=broadcast_color)
 
 # --- ACTION ROUTES ---
-
 @app.route('/add_user', methods=['POST'])
 @login_required
 def add_user():
@@ -627,27 +613,17 @@ def add_user():
 @app.route('/update_user_full', methods=['POST'])
 @login_required
 def update_user_full():
-    u = request.form['username']
-    plan = request.form.get('plan')
+    u = request.form['username']; plan = request.form.get('plan')
     credit_adj = request.form.get('credit_adj')
     cl = request.form.get('custom_limit') or None
     c2 = request.form.get('custom_cost_2') or None
     cp = request.form.get('custom_cost_pro') or None
     ak = request.form.get('assigned_key') or None
-
     conn = get_db()
-    
-    # Update Configs
-    conn.execute('''UPDATE users SET plan=?, custom_limit=?, custom_cost_2=?, custom_cost_pro=?, assigned_api_key=? 
-                    WHERE username=?''', (plan, cl, c2, cp, ak, u))
-    
-    # Update Credits if amount provided
+    conn.execute('''UPDATE users SET plan=?, custom_limit=?, custom_cost_2=?, custom_cost_pro=?, assigned_api_key=? WHERE username=?''', (plan, cl, c2, cp, ak, u))
     if credit_adj:
-        try:
-            val = int(credit_adj)
-            conn.execute("UPDATE users SET credits = credits + ? WHERE username=?", (val, u))
+        try: conn.execute("UPDATE users SET credits = credits + ? WHERE username=?", (int(credit_adj), u))
         except: pass
-
     conn.commit(); conn.close()
     return redirect('/dashboard')
 
@@ -655,9 +631,7 @@ def update_user_full():
 @login_required
 def add_api_key():
     try:
-        conn = get_db()
-        conn.execute("INSERT INTO api_keys (key_value, label) VALUES (?, ?)", (request.form['key_value'], request.form['label']))
-        conn.commit(); conn.close()
+        conn = get_db(); conn.execute("INSERT INTO api_keys (key_value, label) VALUES (?, ?)", (request.form['key_value'], request.form['label'])); conn.commit(); conn.close()
     except: pass
     return redirect('/api_keys')
 
@@ -670,9 +644,7 @@ def delete_key(k):
 @app.route('/toggle_status/<username>/<int:status>')
 @login_required
 def toggle_status(username, status):
-    conn = get_db()
-    conn.execute("UPDATE users SET is_active = ? WHERE username=?", (status, username))
-    conn.commit(); conn.close()
+    conn = get_db(); conn.execute("UPDATE users SET is_active = ? WHERE username=?", (status, username)); conn.commit(); conn.close()
     return redirect('/dashboard')
 
 @app.route('/delete_user/<username>')
@@ -685,12 +657,9 @@ def delete_user(username):
 @login_required
 def generate_vouchers():
     amt = int(request.form['amount']); qty = int(request.form['count'])
-    max_uses = int(request.form.get('max_uses', 1))
-    expiry = request.form.get('expiry') or None
+    max_uses = int(request.form.get('max_uses', 1)); expiry = request.form.get('expiry') or None
     conn = get_db()
-    for _ in range(qty):
-        conn.execute("INSERT INTO vouchers (code, amount, max_uses, expiry_date, created_at) VALUES (?, ?, ?, ?, ?)", 
-                     (generate_voucher_code(amt), amt, max_uses, expiry, str(datetime.now())))
+    for _ in range(qty): conn.execute("INSERT INTO vouchers (code, amount, max_uses, expiry_date, created_at) VALUES (?, ?, ?, ?, ?)", (generate_voucher_code(amt), amt, max_uses, expiry, str(datetime.now())))
     conn.commit(); conn.close()
     return redirect('/vouchers')
 
@@ -704,35 +673,39 @@ def delete_voucher(code):
 @login_required
 def update_settings():
     form = request.form
-    for k in form:
-        if k.startswith('cost_') or k.startswith('limit_') or k.startswith('update_'):
-            set_setting(k, form[k])
+    if 'update_is_live' not in form: set_setting('update_is_live', '0')
+    for k in form: set_setting(k, form[k])
     return redirect('/settings')
 
-# --- CLIENT API ROUTES (SAME AS BEFORE) ---
+@app.route('/update_broadcast', methods=['POST'])
+@login_required
+def update_broadcast():
+    set_setting('broadcast_msg', request.form.get('message'))
+    set_setting('broadcast_color', request.form.get('color'))
+    return redirect('/settings')
+
+@app.route('/clear_broadcast')
+@login_required
+def clear_broadcast():
+    set_setting('broadcast_msg', ''); return redirect('/settings')
+
+# --- API ---
 @app.route('/api/verify', methods=['POST'])
 def verify_user():
     d = request.json
     conn = get_db()
     u = conn.execute("SELECT credits, expiry_date, is_active, plan, custom_limit FROM users WHERE username=? AND api_key=?", (d.get('username'), d.get('api_key'))).fetchone()
-    
     if not u: conn.close(); return jsonify({"valid": False, "message": "Invalid Credentials"})
-    if u['is_active'] == 0: conn.close(); return jsonify({"valid": False, "message": "Account Banned"})
-    if u['is_active'] == 2: conn.close(); return jsonify({"valid": False, "message": "Account Suspended"})
+    if u['is_active'] == 0: conn.close(); return jsonify({"valid": False, "message": "Banned"})
+    if u['is_active'] == 2: conn.close(); return jsonify({"valid": False, "message": "Suspended"})
     if datetime.now() > datetime.strptime(u['expiry_date'], "%Y-%m-%d"): conn.close(); return jsonify({"valid": False, "message": "Expired"})
-    
-    conn.execute("UPDATE users SET last_seen = ? WHERE username=?", (str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")), d.get('username')))
-    conn.commit()
-
-    limit = u['custom_limit']
-    if not limit:
-        plan = u['plan'].lower()
-        limit = int(get_setting(f"limit_{plan}", 3))
-    
+    conn.execute("UPDATE users SET last_seen = ? WHERE username=?", (str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")), d.get('username'))); conn.commit()
+    limit = u['custom_limit'] if u['custom_limit'] else int(get_setting(f"limit_{u['plan'].lower()}", 3))
     return jsonify({
         "valid": True, "credits": u['credits'], "expiry": u['expiry_date'], "plan": u['plan'], "concurrency_limit": limit,
         "broadcast": get_setting('broadcast_msg', ''), "broadcast_color": get_setting('broadcast_color', '#FF0000'),
-        "latest_version": get_setting('latest_version', '1.0.0'), "update_desc": get_setting('update_desc', ''), "update_is_live": get_setting('update_is_live', '0') == '1', "download_url": get_setting('update_url', '')
+        "latest_version": get_setting('latest_version', '1.0.0'), "update_desc": get_setting('update_desc', ''), 
+        "update_is_live": get_setting('update_is_live', '0') == '1', "download_url": get_setting('update_url', '')
     })
 
 @app.route('/api/heartbeat', methods=['POST'])
@@ -740,9 +713,7 @@ def heartbeat():
     d = request.json
     u = d.get('username'); k = d.get('api_key')
     if u and k:
-        conn = get_db()
-        conn.execute("UPDATE users SET session_minutes = session_minutes + 1 WHERE username=? AND api_key=?", (u, k))
-        conn.commit(); conn.close()
+        conn = get_db(); conn.execute("UPDATE users SET session_minutes = session_minutes + 1 WHERE username=? AND api_key=?", (u, k)); conn.commit(); conn.close()
     return jsonify({"status": "ok"})
 
 @app.route('/api/redeem', methods=['POST'])
@@ -750,21 +721,15 @@ def redeem():
     d = request.json
     code = d.get('code'); username = d.get('username')
     conn = get_db()
-    
     v = conn.execute("SELECT amount, max_uses, current_uses, expiry_date FROM vouchers WHERE code=?", (code,)).fetchone()
-    
     if not v: conn.close(); return jsonify({"success": False, "message": "Invalid Code"})
-    if v['current_uses'] >= v['max_uses']: conn.close(); return jsonify({"success": False, "message": "Code Fully Used"})
-    if v['expiry_date'] and datetime.now() > datetime.strptime(v['expiry_date'], "%Y-%m-%d"): conn.close(); return jsonify({"success": False, "message": "Code Expired"})
-    
-    used = conn.execute("SELECT 1 FROM voucher_usage WHERE code=? AND username=?", (code, username)).fetchone()
-    if used: conn.close(); return jsonify({"success": False, "message": "Already Redeemed"})
-    
+    if v['current_uses'] >= v['max_uses']: conn.close(); return jsonify({"success": False, "message": "Fully Used"})
+    if v['expiry_date'] and datetime.now() > datetime.strptime(v['expiry_date'], "%Y-%m-%d"): conn.close(); return jsonify({"success": False, "message": "Expired"})
+    if conn.execute("SELECT 1 FROM voucher_usage WHERE code=? AND username=?", (code, username)).fetchone(): conn.close(); return jsonify({"success": False, "message": "Already Redeemed"})
     conn.execute("UPDATE users SET credits=credits+? WHERE username=?", (v['amount'], username))
     conn.execute("UPDATE vouchers SET current_uses=current_uses+1 WHERE code=?", (code,))
     conn.execute("INSERT INTO voucher_usage (code, username, used_at) VALUES (?, ?, ?)", (code, username, str(datetime.now())))
     conn.commit(); conn.close()
-    
     return jsonify({"success": True, "message": f"Added {v['amount']} Credits"})
 
 @app.route('/api/proxy/generate', methods=['POST'])
@@ -772,29 +737,18 @@ def proxy_gen():
     auth = request.headers.get("Client-Auth", ""); 
     if ":" not in auth: return jsonify({"code":-1}), 401
     u_name, u_key = auth.split(":")
-    
     conn = get_db()
     user = conn.execute("SELECT credits, is_active, custom_cost_2, custom_cost_pro FROM users WHERE username=? AND api_key=?", (u_name, u_key)).fetchone()
-    
-    if not user: conn.close(); return jsonify({"code":-1}), 401
-    if user['is_active'] != 1: conn.close(); return jsonify({"code":-1, "message": "Account Invalid"}), 403
-    
-    model = request.json.get('model', '')
-    cost = user['custom_cost_pro'] if "pro" in model and user['custom_cost_pro'] else (user['custom_cost_2'] if user['custom_cost_2'] else int(get_setting('cost_sora_2_pro' if "pro" in model else 'cost_sora_2', 25)))
-    
+    if not user or user['is_active'] != 1: conn.close(); return jsonify({"code":-1}), 403
+    model = request.json.get('model', ''); cost = user['custom_cost_pro'] if "pro" in model and user['custom_cost_pro'] else (user['custom_cost_2'] if user['custom_cost_2'] else int(get_setting('cost_sora_2_pro' if "pro" in model else 'cost_sora_2', 25)))
     if user['credits'] < cost: conn.close(); return jsonify({"code":-1, "message": "Insufficient Credits"}), 402
-    
     real_key = get_active_api_key(u_name)
-    if not real_key: conn.close(); return jsonify({"code":-1, "message": "System Busy (No Keys)"}), 503
-    
+    if not real_key: conn.close(); return jsonify({"code":-1, "message": "System Busy"}), 503
     try:
         r = requests.post("https://FreeSoraGenerator.com/api/v1/video/sora-video", json=request.json, headers={"Authorization": f"Bearer {real_key}"}, timeout=120)
-        
         if r.json().get("code") == 0:
             tid = r.json().get('data', {}).get('taskId')
-            if tid: 
-                conn.execute("INSERT INTO tasks (task_id, username, cost, status, created_at, model) VALUES (?, ?, ?, ?, ?, ?)", 
-                             (tid, u_name, cost, 'pending', str(datetime.now()), model))
+            if tid: conn.execute("INSERT INTO tasks (task_id, username, cost, status, created_at, model) VALUES (?, ?, ?, ?, ?, ?)", (tid, u_name, cost, 'pending', str(datetime.now()), model))
             conn.execute("UPDATE users SET credits=credits-? WHERE username=?", (cost, u_name))
             conn.execute("INSERT INTO logs (username, action, cost, timestamp, status) VALUES (?, ?, ?, ?, ?)", (u_name, "generate", cost, str(datetime.now()), 'Success'))
             conn.commit()
@@ -810,26 +764,20 @@ def proxy_chk():
         real_key = get_active_api_key()
         r = requests.post("https://FreeSoraGenerator.com/api/video-generations/check-result", json=request.json, headers={"Authorization": f"Bearer {real_key}"}, timeout=30)
         data = r.json(); task_id = request.json.get('taskId')
-        
-        conn = get_db()
-        task = conn.execute("SELECT username, cost, status FROM tasks WHERE task_id=?", (task_id,)).fetchone()
-        
+        conn = get_db(); task = conn.execute("SELECT username, cost, status FROM tasks WHERE task_id=?", (task_id,)).fetchone()
         if task:
             if data.get('data', {}).get('status') == 'failed' and task['status'] != 'refunded':
                 conn.execute("UPDATE users SET credits = credits + ? WHERE username = ?", (task['cost'], task['username']))
                 conn.execute("UPDATE tasks SET status = 'refunded' WHERE task_id = ?", (task_id,))
                 conn.execute("INSERT INTO logs (username, action, cost, timestamp, status) VALUES (?, ?, ?, ?, ?)", (task['username'], f"Refund {task_id}", 0, str(datetime.now()), 'Refund'))
-                
                 stats = json.loads(conn.execute("SELECT daily_stats FROM users WHERE username=?", (task['username'],)).fetchone()[0])
                 stats['fail'] = stats.get('fail', 0) + 1
-                conn.execute("UPDATE users SET daily_stats=? WHERE username=?", (json.dumps(stats), task['username']))
-                conn.commit()
+                conn.execute("UPDATE users SET daily_stats=? WHERE username=?", (json.dumps(stats), task['username'])); conn.commit()
             elif data.get('data', {}).get('status') == 'succeeded' and task['status'] != 'succeeded':
                 conn.execute("UPDATE tasks SET status = 'succeeded' WHERE task_id = ?", (task_id,))
                 stats = json.loads(conn.execute("SELECT daily_stats FROM users WHERE username=?", (task['username'],)).fetchone()[0])
                 stats['success'] = stats.get('success', 0) + 1
-                conn.execute("UPDATE users SET daily_stats=? WHERE username=?", (json.dumps(stats), task['username']))
-                conn.commit()
+                conn.execute("UPDATE users SET daily_stats=? WHERE username=?", (json.dumps(stats), task['username'])); conn.commit()
         conn.close()
         return jsonify(data), r.status_code
     except: return jsonify({"code":-1}), 500
