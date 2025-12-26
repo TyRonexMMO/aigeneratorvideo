@@ -691,18 +691,30 @@ def clear_broadcast():
 def verify_user():
     d = request.json
     conn = get_db()
-    u = conn.execute("SELECT credits, expiry_date, is_active, plan, custom_limit FROM users WHERE username=? AND api_key=?", (d.get('username'), d.get('api_key'))).fetchone()
+    u = conn.execute("SELECT credits, expiry_date, is_active, plan, custom_limit, custom_cost_2, custom_cost_pro FROM users WHERE username=? AND api_key=?", 
+                     (d.get('username'), d.get('api_key'))).fetchone()
     if not u: conn.close(); return jsonify({"valid": False, "message": "Invalid Credentials"})
     if u['is_active'] == 0: conn.close(); return jsonify({"valid": False, "message": "Banned"})
     if u['is_active'] == 2: conn.close(); return jsonify({"valid": False, "message": "Suspended"})
     if datetime.now() > datetime.strptime(u['expiry_date'], "%Y-%m-%d"): conn.close(); return jsonify({"valid": False, "message": "Expired"})
     conn.execute("UPDATE users SET last_seen = ? WHERE username=?", (str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")), d.get('username'))); conn.commit()
     limit = u['custom_limit'] if u['custom_limit'] else int(get_setting(f"limit_{u['plan'].lower()}", 3))
+    
+    # យកតម្លៃ Custom Costs ពី user record ឬតម្លៃ default
+    custom_cost_2 = u['custom_cost_2'] if u['custom_cost_2'] is not None else int(get_setting('cost_sora_2', 25))
+    custom_cost_pro = u['custom_cost_pro'] if u['custom_cost_pro'] is not None else int(get_setting('cost_sora_2_pro', 35))
+    
     return jsonify({
         "valid": True, "credits": u['credits'], "expiry": u['expiry_date'], "plan": u['plan'], "concurrency_limit": limit,
         "broadcast": get_setting('broadcast_msg', ''), "broadcast_color": get_setting('broadcast_color', '#FF0000'),
         "latest_version": get_setting('latest_version', '1.0.0'), "update_desc": get_setting('update_desc', ''), 
-        "update_is_live": get_setting('update_is_live', '0') == '1', "download_url": get_setting('update_url', '')
+        "update_is_live": get_setting('update_is_live', '0') == '1', "download_url": get_setting('update_url', ''),
+        # បន្ថែមតម្លៃ Custom Costs
+        "custom_cost_2": custom_cost_2,
+        "custom_cost_pro": custom_cost_pro,
+        # រក្សាទុកតម្លៃ default ផងដែរ
+        "default_cost_sora_2": int(get_setting('cost_sora_2', 25)),
+        "default_cost_sora_2_pro": int(get_setting('cost_sora_2_pro', 35))
     })
 
 @app.route('/api/heartbeat', methods=['POST'])
@@ -781,3 +793,4 @@ def proxy_chk():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+
