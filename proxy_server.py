@@ -20,7 +20,6 @@ ADMIN_LOGIN_PATH = os.environ.get("ADMIN_PATH", "secure_login")
 UPLOAD_FOLDER = 'static/updates'
 ALLOWED_EXTENSIONS = {'py', 'exe', 'zip'}
 
-# Create upload folder if not exists
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
@@ -60,7 +59,7 @@ def init_db():
         'limit_mini': '1', 'limit_basic': '2', 'limit_standard': '3',
         'broadcast_msg': '',
         'broadcast_color': '#FF0000',
-        'latest_version': '1.0.0',
+        'latest_version': '25.12.11',
         'update_desc': 'Initial Release',
         'update_is_live': '0',
         'update_filename': ''
@@ -97,11 +96,10 @@ def get_client_ip():
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# --- SECURITY MIDDLEWARE (IRON DOME) ---
+# --- SECURITY MIDDLEWARE ---
 @app.before_request
 def security_guard():
     ip = get_client_ip()
-    
     conn = get_db()
     is_banned = conn.execute("SELECT 1 FROM banned_ips WHERE ip=?", (ip,)).fetchone()
     conn.close()
@@ -136,13 +134,14 @@ MODERN_DASHBOARD_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sora Admin Pro</title>
+    <title>Sora Admin - ផ្ទាំងគ្រប់គ្រង</title>
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -156,20 +155,13 @@ MODERN_DASHBOARD_HTML = """
             }
         }
         
-        function copyToClipboard(text, username) {
+        function copyToClipboard(text) {
             navigator.clipboard.writeText(text).then(function() {
-                // Show a temporary message
-                const button = event.target.closest('button');
-                const originalHTML = button.innerHTML;
-                button.innerHTML = '<i class="fas fa-check"></i>';
-                button.style.color = '#10b981';
-                
-                setTimeout(function() {
-                    button.innerHTML = originalHTML;
-                    button.style.color = '#3b82f6';
-                }, 2000);
-            }).catch(function(err) {
-                console.error('Failed to copy: ', err);
+                const Toast = Swal.mixin({
+                    toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true,
+                    didOpen: (toast) => { toast.addEventListener('mouseenter', Swal.stopTimer); toast.addEventListener('mouseleave', Swal.resumeTimer); }
+                });
+                Toast.fire({ icon: 'success', title: 'បានចម្លង License Key!' });
             });
         }
     </script>
@@ -179,13 +171,9 @@ MODERN_DASHBOARD_HTML = """
         .sidebar-link:hover i, .sidebar-link.active i { color: white; }
         .card-hover { transition: transform 0.2s, box-shadow 0.2s; }
         .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); }
-        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        
-        /* Switch Toggle */
         .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .4s; border-radius: 24px; }
@@ -194,59 +182,77 @@ MODERN_DASHBOARD_HTML = """
         input:checked + .slider:before { transform: translateX(20px); }
     </style>
 </head>
-<body class="flex h-screen overflow-hidden bg-gray-50 text-slate-800">
+<body class="flex h-screen overflow-hidden bg-gray-50 text-slate-800 font-sans">
     
-    <!-- Success/Error Message -->
-    {% with messages = get_flashed_messages() %}
+    <!-- Flash Messages (handled by SweetAlert now mainly, but kept for fallback) -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-            <div id="flash-message" class="fixed top-4 right-4 z-50 max-w-md">
-                {% for message in messages %}
-                    <div class="bg-emerald-500 text-white px-4 py-3 rounded-lg shadow-lg flex items-center justify-between mb-2">
-                        <span>{{ message }}</span>
-                        <button onclick="this.parentElement.parentElement.remove()" class="text-white ml-4">&times;</button>
-                    </div>
-                {% endfor %}
-            </div>
             <script>
-                // Auto-hide flash messages after 3 seconds
-                setTimeout(function() {
-                    const flashMsg = document.getElementById('flash-message');
-                    if(flashMsg) flashMsg.remove();
-                }, 3000);
+                {% for category, message in messages %}
+                    Swal.fire({
+                        icon: '{{ "success" if category != "error" else "error" }}',
+                        title: '{{ "ជោគជ័យ" if category != "error" else "បរាជ័យ" }}',
+                        text: '{{ message }}',
+                        timer: 3000,
+                        showConfirmButton: false
+                    });
+                {% endfor %}
             </script>
         {% endif %}
     {% endwith %}
+    
+    <!-- Show New User Modal if created -->
+    {% if new_user_data %}
+    <script>
+        Swal.fire({
+            title: '<strong>បានបង្កើតគណនីថ្មី!</strong>',
+            icon: 'success',
+            html:
+                '<div class="text-left bg-gray-100 p-4 rounded-lg border border-gray-300">' +
+                '<p class="mb-2"><strong>ឈ្មោះគណនី:</strong> {{ new_user_data.username }}</p>' +
+                '<p class="mb-1"><strong>License Key:</strong></p>' +
+                '<div class="flex items-center gap-2">' +
+                '<code class="bg-white px-2 py-1 rounded border flex-1 font-mono text-emerald-600 font-bold" id="newKey">{{ new_user_data.key }}</code>' +
+                '<button onclick="copyToClipboard(\'{{ new_user_data.key }}\')" class="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"><i class="fas fa-copy"></i></button>' +
+                '</div>' +
+                '</div>',
+            showCloseButton: true,
+            focusConfirm: false,
+            confirmButtonText: '<i class="fa fa-thumbs-up"></i> យល់ព្រម',
+        })
+    </script>
+    {% endif %}
 
     <!-- Sidebar -->
     <aside class="w-64 bg-white border-r border-gray-200 flex flex-col hidden md:flex z-50 shadow-lg">
-        <div class="h-20 flex items-center px-6 border-b border-gray-50">
-            <i class="fas fa-layer-group text-primary text-2xl mr-3"></i>
-            <span class="text-xl font-bold text-slate-800 tracking-tight">SoraManager</span>
+        <div class="h-20 flex items-center px-6 border-b border-gray-50 bg-slate-900 text-white">
+            <i class="fas fa-robot text-emerald-400 text-2xl mr-3"></i>
+            <span class="text-xl font-bold tracking-tight">Sora Admin</span>
         </div>
 
         <nav class="flex-1 overflow-y-auto py-6 px-4 space-y-1.5">
             <p class="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">ម៉ឺនុយចម្បង</p>
             <a href="/dashboard" class="sidebar-link flex items-center px-4 py-3 text-slate-600 rounded-xl {{ 'active' if page == 'users' else '' }}">
                 <i class="fas fa-users w-6 {{ 'text-primary' if page != 'users' else 'text-white' }}"></i>
-                <span class="font-medium">អ្នកប្រើប្រាស់</span>
+                <span class="font-medium">អ្នកប្រើប្រាស់ (Users)</span>
             </a>
             <a href="/vouchers" class="sidebar-link flex items-center px-4 py-3 text-slate-600 rounded-xl {{ 'active' if page == 'vouchers' else '' }}">
                 <i class="fas fa-ticket-alt w-6 {{ 'text-primary' if page != 'vouchers' else 'text-white' }}"></i>
-                <span class="font-medium">ប័ណ្ណបញ្ចូលលុយ</span>
+                <span class="font-medium">ប័ណ្ណបញ្ចូលលុយ (Vouchers)</span>
             </a>
             <a href="/logs" class="sidebar-link flex items-center px-4 py-3 text-slate-600 rounded-xl {{ 'active' if page == 'logs' else '' }}">
                 <i class="fas fa-clipboard-list w-6 {{ 'text-primary' if page != 'logs' else 'text-white' }}"></i>
-                <span class="font-medium">ប្រវត្តិសកម្មភាព</span>
+                <span class="font-medium">ប្រវត្តិសកម្មភាព (Logs)</span>
             </a>
             
             <p class="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mt-8 mb-3">ប្រព័ន្ធ</p>
             <a href="/security" class="sidebar-link flex items-center px-4 py-3 text-slate-600 rounded-xl {{ 'active' if page == 'security' else '' }}">
                 <i class="fas fa-shield-alt w-6 {{ 'text-primary' if page != 'security' else 'text-white' }}"></i>
-                <span class="font-medium">សុវត្ថិភាព</span>
+                <span class="font-medium">សុវត្ថិភាព (Security)</span>
             </a>
             <a href="/settings" class="sidebar-link flex items-center px-4 py-3 text-slate-600 rounded-xl {{ 'active' if page == 'settings' else '' }}">
                 <i class="fas fa-cog w-6 {{ 'text-primary' if page != 'settings' else 'text-white' }}"></i>
-                <span class="font-medium">ការកំណត់</span>
+                <span class="font-medium">ការកំណត់ (Settings)</span>
             </a>
         </nav>
 
@@ -265,7 +271,7 @@ MODERN_DASHBOARD_HTML = """
             <div class="flex justify-between items-end mb-8">
                 <div>
                     <h1 class="text-3xl font-bold text-slate-800">គ្រប់គ្រងអ្នកប្រើប្រាស់</h1>
-                    <p class="text-slate-500 mt-1">មើលនិងគ្រប់គ្រងសិទ្ធិប្រើប្រាស់ និងក្រេឌីត</p>
+                    <p class="text-slate-500 mt-1">មើលនិងកែប្រែទិន្នន័យអ្នកប្រើប្រាស់ទាំងអស់</p>
                 </div>
                 <div class="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 border border-emerald-100">
                     <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
@@ -299,14 +305,14 @@ MODERN_DASHBOARD_HTML = """
             <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-8">
                 <h3 class="text-lg font-bold text-slate-800 mb-5 flex items-center gap-2"><i class="fas fa-user-plus text-primary"></i> បង្កើតគណនីថ្មី</h3>
                 <form action="/add_user" method="POST" class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-                    <div class="col-span-1"><label class="block text-xs font-bold text-slate-500 mb-1.5">USERNAME</label><input type="text" name="username" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" placeholder="Ex: User01" required></div>
-                    <div class="col-span-1"><label class="block text-xs font-bold text-slate-500 mb-1.5">CREDITS</label><input type="number" name="credits" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" placeholder="500" required></div>
-                    <div class="col-span-1"><label class="block text-xs font-bold text-slate-500 mb-1.5">PLAN</label>
+                    <div class="col-span-1"><label class="block text-xs font-bold text-slate-500 mb-1.5">ឈ្មោះគណនី</label><input type="text" name="username" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" placeholder="Ex: User01" required></div>
+                    <div class="col-span-1"><label class="block text-xs font-bold text-slate-500 mb-1.5">ក្រេឌីត</label><input type="number" name="credits" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" placeholder="500" required></div>
+                    <div class="col-span-1"><label class="block text-xs font-bold text-slate-500 mb-1.5">កញ្ចប់ (Plan)</label>
                         <select name="plan" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium cursor-pointer">
-                            <option value="Mini">Mini (1)</option><option value="Basic">Basic (2)</option><option value="Standard" selected>Standard (3)</option>
+                            <option value="Mini">Mini (1 Thread)</option><option value="Basic">Basic (2 Threads)</option><option value="Standard" selected>Standard (3 Threads)</option>
                         </select>
                     </div>
-                    <div class="col-span-1"><label class="block text-xs font-bold text-slate-500 mb-1.5">EXPIRY</label><input type="date" name="expiry" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium cursor-pointer" required></div>
+                    <div class="col-span-1"><label class="block text-xs font-bold text-slate-500 mb-1.5">ថ្ងៃផុតកំណត់</label><input type="date" name="expiry" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium cursor-pointer" required></div>
                     <div class="col-span-1"><button type="submit" class="w-full bg-primary hover:bg-indigo-600 text-white font-bold py-2.5 rounded-lg transition shadow-lg shadow-indigo-500/30 flex items-center justify-center gap-2"><i class="fas fa-check"></i> បង្កើត</button></div>
                 </form>
             </div>
@@ -316,16 +322,23 @@ MODERN_DASHBOARD_HTML = """
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm text-left">
                         <thead class="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-100">
-                            <tr><th class="px-6 py-4 font-bold">ឈ្មោះគណនី</th><th class="px-6 py-4 font-bold">License Key</th><th class="px-6 py-4 font-bold">កញ្ចប់</th><th class="px-6 py-4 font-bold text-center">ក្រេឌីត</th><th class="px-6 py-4 font-bold">ផុតកំណត់</th><th class="px-6 py-4 font-bold">ស្ថានភាព</th><th class="px-6 py-4 font-bold text-right">សកម្មភាព</th></tr>
+                            <tr>
+                                <th class="px-6 py-4 font-bold">ឈ្មោះ</th>
+                                <th class="px-6 py-4 font-bold">License Key (ចុច Copy)</th>
+                                <th class="px-6 py-4 font-bold">កញ្ចប់</th>
+                                <th class="px-6 py-4 font-bold text-center">ក្រេឌីត</th>
+                                <th class="px-6 py-4 font-bold">ស្ថានភាព (Status)</th>
+                                <th class="px-6 py-4 font-bold text-right">សកម្មភាព</th>
+                            </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
                             {% for user in users %}
                             <tr class="hover:bg-slate-50 transition-colors group">
                                 <td class="px-6 py-4 font-bold text-slate-700">{{ user[0] }}</td>
-                                <td class="px-6 py-4 font-mono text-slate-400 text-xs select-all">
-                                    <span id="license-{{ user[0] }}">{{ user[1] }}</span>
-                                    <button onclick="copyToClipboard('{{ user[1] }}', '{{ user[0] }}')" class="ml-2 text-blue-500 hover:text-blue-700" title="Copy License Key">
-                                        <i class="fas fa-copy"></i>
+                                <!-- License Key with Copy -->
+                                <td class="px-6 py-4">
+                                    <button onclick="copyToClipboard('{{ user[1] }}')" class="flex items-center gap-2 text-xs font-mono bg-slate-100 hover:bg-blue-50 text-slate-500 hover:text-blue-600 px-2 py-1 rounded border border-slate-200 transition-colors" title="ចុចដើម្បី Copy">
+                                        <i class="fas fa-key"></i> {{ user[1][:10] }}...
                                     </button>
                                 </td>
                                 <td class="px-6 py-4">
@@ -333,37 +346,40 @@ MODERN_DASHBOARD_HTML = """
                                     {% elif user[6] == 'Basic' %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-600 border border-blue-200">Basic</span>
                                     {% else %}<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-600 border border-purple-200">Mini</span>{% endif %}
                                 </td>
+                                <!-- Credits Management -->
                                 <td class="px-6 py-4">
                                     <div class="flex flex-col items-center gap-1">
-                                        <form action="/update_credits" method="POST" class="flex items-center justify-center gap-1">
-                                            <input type="hidden" name="username" value="{{ user[0] }}">
-                                            <span class="font-bold {{ 'text-emerald-500' if user[2] > 50 else 'text-red-500' }}">{{ user[2] }}</span>
-                                            <input type="number" name="amount" placeholder="+/-" class="w-16 px-2 py-1 text-xs border rounded-md bg-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all opacity-0 group-hover:opacity-100 focus:opacity-100">
-                                            <button type="submit" class="opacity-0 group-hover:opacity-100 focus:opacity-100 text-xs bg-indigo-500 text-white px-2 py-1 rounded hover:bg-indigo-600">OK</button>
-                                        </form>
-                                        <div class="flex gap-1">
-                                            <a href="/adjust_credits/{{ user[0] }}/50" class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200">+50</a>
-                                            <a href="/adjust_credits/{{ user[0] }}/-10" class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200">-10</a>
+                                        <span class="font-bold text-lg {{ 'text-emerald-500' if user[2] > 50 else 'text-red-500' }}">{{ user[2] }}</span>
+                                        <div class="flex items-center gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
+                                            <a href="/adjust_credits/{{ user[0] }}/100" class="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded hover:bg-green-200">+100</a>
+                                            <a href="/adjust_credits/{{ user[0] }}/-100" class="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded hover:bg-red-200">-100</a>
                                         </div>
+                                        <form action="/update_credits" method="POST" class="flex items-center justify-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <input type="hidden" name="username" value="{{ user[0] }}">
+                                            <input type="number" name="amount" placeholder="+/-" class="w-14 px-1 py-0.5 text-xs border rounded focus:ring-1 focus:ring-indigo-500 outline-none text-center">
+                                            <button type="submit" class="text-xs bg-indigo-500 text-white px-2 py-0.5 rounded hover:bg-indigo-600">OK</button>
+                                        </form>
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 text-slate-500 text-xs">{{ user[3] }}</td>
+                                <!-- Status Toggle Dropdown -->
                                 <td class="px-6 py-4">
-                                    {% if user[5] == 'active' %}<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Active</span>
-                                    {% elif user[5] == 'inactive' %}<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-700"><span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>Inactive</span>
-                                    {% elif user[5] == 'suspended' %}<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-yellow-100 text-yellow-700"><span class="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>Suspended</span>
-                                    {% else %}<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Banned</span>{% endif %}
+                                    <form action="/set_status" method="POST">
+                                        <input type="hidden" name="username" value="{{ user[0] }}">
+                                        <select name="status" onchange="this.form.submit()" class="text-xs font-bold py-1 px-2 rounded border cursor-pointer outline-none 
+                                            {% if user[5] == 'active' %}bg-emerald-100 text-emerald-700 border-emerald-200
+                                            {% elif user[5] == 'inactive' %}bg-gray-100 text-gray-700 border-gray-200
+                                            {% elif user[5] == 'suspended' %}bg-yellow-100 text-yellow-700 border-yellow-200
+                                            {% else %}bg-red-100 text-red-700 border-red-200{% endif %}">
+                                            <option value="active" {% if user[5] == 'active' %}selected{% endif %}>Active</option>
+                                            <option value="inactive" {% if user[5] == 'inactive' %}selected{% endif %}>Inactive</option>
+                                            <option value="suspended" {% if user[5] == 'suspended' %}selected{% endif %}>Suspend</option>
+                                            <option value="banned" {% if user[5] == 'banned' %}selected{% endif %}>Banned</option>
+                                        </select>
+                                    </form>
                                 </td>
                                 <td class="px-6 py-4 text-right">
-                                    <div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <form action="/update_plan" method="POST" class="inline">
-                                            <input type="hidden" name="username" value="{{ user[0] }}">
-                                            <select name="plan" onchange="this.form.submit()" class="w-20 text-xs py-1 px-1 border rounded bg-white text-slate-600 cursor-pointer outline-none">
-                                                <option value="" disabled selected>Plan</option><option value="Mini">Mini</option><option value="Basic">Basic</option><option value="Standard">Std</option>
-                                            </select>
-                                        </form>
-                                        <a href="/toggle_status/{{ user[0] }}" class="p-1.5 bg-slate-100 rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-800 transition-colors" title="Toggle Status"><i class="fas fa-power-off"></i></a>
-                                        <a href="/delete_user/{{ user[0] }}" class="p-1.5 bg-red-50 rounded-md text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors" onclick="return confirm('Delete?')" title="Delete"><i class="fas fa-trash-alt"></i></a>
+                                    <div class="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                                        <a href="/delete_user/{{ user[0] }}" class="p-1.5 bg-red-50 rounded-md text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors" onclick="return confirm('តើអ្នកច្បាស់ទេថាចង់លុប?')" title="លុបចោល"><i class="fas fa-trash-alt"></i></a>
                                     </div>
                                 </td>
                             </tr>
@@ -401,7 +417,7 @@ MODERN_DASHBOARD_HTML = """
                     <tbody class="divide-y divide-slate-100">
                         {% for v in vouchers %}
                         <tr class="hover:bg-slate-50">
-                            <td class="px-6 py-4 font-mono font-bold text-slate-700 select-all">{{ v[0] }}</td>
+                            <td class="px-6 py-4 font-mono font-bold text-slate-700 select-all cursor-pointer" onclick="copyToClipboard('{{ v[0] }}')">{{ v[0] }}</td>
                             <td class="px-6 py-4 text-emerald-600 font-bold">+{{ v[1] }}</td>
                             <td class="px-6 py-4">{% if v[2] %}<span class="px-2 py-1 rounded text-xs font-bold bg-red-100 text-red-600">Used</span>{% else %}<span class="px-2 py-1 rounded text-xs font-bold bg-green-100 text-green-600">Active</span>{% endif %}</td>
                             <td class="px-6 py-4 text-slate-500">{{ v[4] if v[4] else '-' }}</td>
@@ -418,7 +434,7 @@ MODERN_DASHBOARD_HTML = """
             <div class="bg-white rounded-2xl shadow-sm border border-red-100 p-6 relative overflow-hidden">
                 <div class="absolute top-0 right-0 p-4 opacity-10"><i class="fas fa-shield-alt text-9xl text-red-500"></i></div>
                 <h4 class="text-lg font-bold text-red-600 mb-2 relative z-10"><i class="fas fa-ban"></i> IP ដែលត្រូវបានហាមឃាត់ (Banned IPs)</h4>
-                <p class="text-sm text-slate-500 mb-6 relative z-10">IP ទាំងនេះត្រូវបានបិទដោយស្វ័យប្រវត្តិ ដោយសារសកម្មភាពមិនប្រក្រតី (Brute force/Scanning)។</p>
+                <p class="text-sm text-slate-500 mb-6 relative z-10">IP ទាំងនេះត្រូវបានបិទដោយស្វ័យប្រវត្តិ។</p>
                 <div class="overflow-x-auto relative z-10">
                     <table class="w-full text-sm text-left">
                         <thead class="bg-red-50 text-red-700 text-xs uppercase rounded-lg"><tr><th class="px-6 py-3 rounded-l-lg">IP Address</th><th class="px-6 py-3">Reason</th><th class="px-6 py-3">Time</th><th class="px-6 py-3 rounded-r-lg">Action</th></tr></thead>
@@ -445,13 +461,13 @@ MODERN_DASHBOARD_HTML = """
             
             <!-- Update System Config -->
             <div class="bg-gradient-to-r from-blue-600 to-cyan-500 rounded-2xl p-6 text-white shadow-xl shadow-blue-200 mb-8">
-                <h4 class="font-bold text-lg mb-4 flex items-center gap-2"><i class="fas fa-sync-alt"></i> ប្រព័ន្ធអាប់ដេតកម្មវិធី (App Updates)</h4>
+                <h4 class="font-bold text-lg mb-4 flex items-center gap-2"><i class="fas fa-sync-alt"></i> អាប់ដេតកម្មវិធី (App Updates)</h4>
                 
                 <form action="/update_settings" method="POST" enctype="multipart/form-data" class="space-y-4">
                     <div class="flex items-center justify-between bg-white/10 p-4 rounded-lg backdrop-blur-sm border border-white/20">
                         <div>
-                            <h5 class="font-bold text-white">Enable Update Notification</h5>
-                            <p class="text-xs text-white/70">បើកមុខងារនេះដើម្បីបង្ហាញផ្ទាំង Update ទៅកាន់អ្នកប្រើប្រាស់។</p>
+                            <h5 class="font-bold text-white">បង្ហាញផ្ទាំង Update</h5>
+                            <p class="text-xs text-white/70">បើកមុខងារនេះដើម្បីឲ្យ User ឃើញថាមាន Version ថ្មី។</p>
                         </div>
                         <label class="switch">
                             <input type="checkbox" name="update_is_live" {% if update_is_live == '1' %}checked{% endif %}>
@@ -465,25 +481,25 @@ MODERN_DASHBOARD_HTML = """
                             <input type="text" name="latest_version" value="{{ latest_version }}" class="w-full bg-white/20 border border-white/30 rounded-lg px-3 py-2 text-white placeholder-white/60 focus:bg-white/30 outline-none backdrop-blur-sm" placeholder="Ex: 25.12.11">
                         </div>
                         <div class="flex-1">
-                            <label class="text-xs font-bold text-white/70 block mb-1">Upload New File (.py / .exe)</label>
-                            <input type="file" name="update_file" class="w-full bg-white/20 border border-white/30 rounded-lg px-3 py-1.5 text-white text-sm focus:bg-white/30 outline-none backdrop-blur-sm file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-white file:text-blue-700 hover:file:bg-blue-50">
+                            <label class="text-xs font-bold text-white/70 block mb-1">Upload File (.py)</label>
+                            <input type="file" name="update_file" class="w-full bg-white/20 border border-white/30 rounded-lg px-3 py-1.5 text-white text-sm focus:bg-white/30 outline-none backdrop-blur-sm">
                             {% if update_filename %}
-                            <p class="text-xs text-emerald-300 mt-1"><i class="fas fa-check-circle"></i> Current File: {{ update_filename }}</p>
+                            <p class="text-xs text-emerald-300 mt-1"><i class="fas fa-check-circle"></i> Current: {{ update_filename }}</p>
                             {% endif %}
                         </div>
                     </div>
                     <div>
-                        <label class="text-xs font-bold text-white/70 block mb-1">Update Description</label>
-                        <textarea name="update_desc" class="w-full bg-white/20 border border-white/30 rounded-lg px-3 py-2 text-white placeholder-white/60 focus:bg-white/30 outline-none backdrop-blur-sm h-20" placeholder="សរសេរអំពីអ្វីដែលថ្មី...">{{ update_desc }}</textarea>
+                        <label class="text-xs font-bold text-white/70 block mb-1">បរិយាយ (Description)</label>
+                        <textarea name="update_desc" class="w-full bg-white/20 border border-white/30 rounded-lg px-3 py-2 text-white placeholder-white/60 focus:bg-white/30 outline-none backdrop-blur-sm h-20">{{ update_desc }}</textarea>
                     </div>
-                    <button class="bg-white text-blue-600 font-bold px-6 py-2.5 rounded-lg hover:bg-blue-50 shadow-lg w-full">Save Update Settings</button>
+                    <button class="bg-white text-blue-600 font-bold px-6 py-2.5 rounded-lg hover:bg-blue-50 shadow-lg w-full">រក្សាទុក</button>
                 </form>
             </div>
 
             <!-- Broadcast -->
             <div class="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-6 text-white shadow-xl shadow-indigo-200 mb-8">
                 <h4 class="font-bold text-lg mb-2 flex items-center gap-2"><i class="fas fa-bullhorn"></i> ផ្សព្វផ្សាយដំណឹង (Broadcast)</h4>
-                <p class="text-white/80 text-sm mb-4">សារនេះនឹងលោតឡើងលើកម្មវិធីអ្នកប្រើប្រាស់ទាំងអស់។</p>
+                <p class="text-white/80 text-sm mb-4">សារនេះនឹងលោតរត់នៅខាងលើកម្មវិធីរបស់អ្នកប្រើប្រាស់។</p>
                 <form action="/update_broadcast" method="POST" class="flex gap-2 items-center">
                     <input type="color" name="color" value="{{ broadcast_color }}" class="h-10 w-10 rounded border-none cursor-pointer shadow-lg" title="ពណ៌អក្សរ">
                     <input type="text" name="message" value="{{ broadcast_msg }}" class="flex-1 bg-white/20 border border-white/30 rounded-lg px-4 py-2.5 text-white placeholder-white/60 focus:bg-white/30 outline-none backdrop-blur-sm" placeholder="សរសេរសារ...">
@@ -534,7 +550,7 @@ MODERN_DASHBOARD_HTML = """
             <h1 class="text-2xl font-bold text-slate-800 mb-6">កំណត់ត្រា (Logs)</h1>
             <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                 <table class="w-full text-sm text-left">
-                    <thead class="bg-slate-50 text-slate-500 text-xs uppercase border-b border-slate-100"><tr><th class="px-6 py-4">Time</th><th class="px-6 py-4">User</th><th class="px-6 py-4">Action</th><th class="px-6 py-4">Cost</th></tr></thead>
+                    <thead class="bg-slate-50 text-slate-500 text-xs uppercase border-b border-slate-100"><tr><th class="px-6 py-4">ពេលវេលា</th><th class="px-6 py-4">អ្នកប្រើប្រាស់</th><th class="px-6 py-4">សកម្មភាព</th><th class="px-6 py-4">ចំណាយ</th></tr></thead>
                     <tbody class="divide-y divide-slate-100">
                         {% for l in logs %}
                         <tr class="hover:bg-slate-50">
@@ -565,21 +581,15 @@ LOGIN_HTML = """
 </head>
 <body class="bg-gray-100 h-screen flex items-center justify-center font-sans">
     <div class="bg-white p-10 rounded-2xl shadow-xl w-96 text-center border border-gray-100">
-        <div class="mb-6 inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-50 text-indigo-600">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
-        </div>
         <h2 class="text-2xl font-bold text-gray-800 mb-2">Admin Portal</h2>
         <p class="text-sm text-gray-500 mb-8">Secure Gateway Access</p>
         
         <form method="POST" class="space-y-4">
             <input type="password" name="password" placeholder="Access Key" class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition" required>
             <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition duration-200 shadow-lg shadow-indigo-500/30">
-                Unlock Dashboard
+                ចូលប្រព័ន្ធ
             </button>
         </form>
-        <p class="mt-8 text-xs text-gray-400">System ID: 2025-SECURE-V2</p>
     </div>
 </body>
 </html>
@@ -617,7 +627,14 @@ def dashboard():
     conn = get_db(); c = conn.cursor()
     c.execute("SELECT username, api_key, credits, expiry_date, is_active, status, plan FROM users ORDER BY created_at DESC")
     users = c.fetchall(); conn.close()
-    return render_template_string(MODERN_DASHBOARD_HTML, page='users', users=users, total_users=len(users), active_users=sum(1 for u in users if u[4] and u[5] == 'active'), total_credits=sum(u[2] for u in users))
+    
+    # Check if a new user was just added to show modal
+    new_user_data = session.pop('new_user_data', None)
+    
+    return render_template_string(MODERN_DASHBOARD_HTML, page='users', users=users, total_users=len(users), 
+                                  active_users=sum(1 for u in users if u[5] == 'active'), 
+                                  total_credits=sum(u[2] for u in users),
+                                  new_user_data=new_user_data)
 
 @app.route('/security')
 @login_required
@@ -676,13 +693,18 @@ def settings():
 def add_user():
     try:
         conn = get_db()
-        api_key = "sk-"+str(uuid.uuid4())[:18]
+        username = request.form['username']
+        api_key = "sk-" + str(uuid.uuid4())
+        
         conn.execute("INSERT INTO users VALUES (?, ?, ?, ?, 1, 'active', ?, ?)", 
-                     (request.form['username'], api_key, int(request.form['credits']), request.form['expiry'], datetime.now().strftime("%Y-%m-%d"), request.form['plan']))
+                     (username, api_key, int(request.form['credits']), request.form['expiry'], datetime.now().strftime("%Y-%m-%d"), request.form['plan']))
         conn.commit(); conn.close()
-        flash(f"បានបង្កើតអ្នកប្រើប្រាស់ '{request.form['username']}' ដោយជោគជ័យ! លេខសម្គាល់គឺ: {api_key}")
+        
+        # Store new user data in session to show modal on dashboard
+        session['new_user_data'] = {'username': username, 'key': api_key}
+        # No flash message needed, the modal covers it
     except Exception as e:
-        flash(f"ការបង្កើតអ្នកប្រើប្រាស់បរាជ័យ: {str(e)}")
+        flash(f"បរាជ័យ: {str(e)}", "error")
     return redirect('/dashboard')
 
 @app.route('/delete_user/<username>')
@@ -692,46 +714,31 @@ def delete_user(username):
     flash(f"បានលុបអ្នកប្រើប្រាស់ '{username}' ដោយជោគជ័យ!")
     return redirect('/dashboard')
 
-@app.route('/toggle_status/<username>')
+@app.route('/set_status', methods=['POST'])
 @login_required
-def toggle_status(username):
+def set_status():
+    username = request.form['username']
+    status = request.form['status']
     conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT status FROM users WHERE username=?", (username,))
-    current_status = c.fetchone()[0]
-    if current_status == 'active':
-        new_status = 'inactive'
-    elif current_status == 'inactive':
-        new_status = 'suspended'
-    elif current_status == 'suspended':
-        new_status = 'banned'
-    else:
-        new_status = 'active'
-    conn.execute("UPDATE users SET status = ? WHERE username=?", (new_status, username))
+    conn.execute("UPDATE users SET status = ? WHERE username=?", (status, username))
     conn.commit(); conn.close()
-    flash(f"បានប្ដូរស្ថានភាពអ្នកប្រើប្រាស់ '{username}' ទៅជា '{new_status}' ដោយជោគជ័យ!")
+    flash(f"បានប្តូរស្ថានភាព '{username}' ទៅជា '{status}'")
     return redirect('/dashboard')
 
 @app.route('/update_credits', methods=['POST'])
 @login_required
 def update_credits():
-    amount = int(request.form['amount'])
-    conn = get_db()
-    conn.execute("UPDATE users SET credits = credits + ? WHERE username = ?", (amount, request.form['username']))
-    # Ensure credits don't go negative
-    conn.execute("UPDATE users SET credits = 0 WHERE credits < 0 AND username = ?", (request.form['username'],))
-    conn.commit(); conn.close()
-    action = "បន្ថែម" if amount > 0 else "ដក"
-    flash(f"បាន{action} {abs(amount)} ក្រេឌីត សម្រាប់អ្នកប្រើប្រាស់ '{request.form['username']}' ដោយជោគជ័យ!")
-    return redirect('/dashboard')
-
-@app.route('/update_plan', methods=['POST'])
-@login_required
-def update_plan():
-    conn = get_db()
-    conn.execute("UPDATE users SET plan = ? WHERE username = ?", (request.form['plan'], request.form['username']))
-    conn.commit(); conn.close()
-    flash(f"បានធ្វើបច្ចុប្បន្នភាពកញ្ចប់សម្រាប់អ្នកប្រើប្រាស់ '{request.form['username']}' ទៅជា '{request.form['plan']}' ដោយជោគជ័យ!")
+    try:
+        amount = int(request.form['amount'])
+        username = request.form['username']
+        conn = get_db()
+        conn.execute("UPDATE users SET credits = credits + ? WHERE username = ?", (amount, username))
+        conn.execute("UPDATE users SET credits = 0 WHERE credits < 0 AND username = ?", (username,))
+        conn.commit(); conn.close()
+        action = "បន្ថែម" if amount > 0 else "ដក"
+        flash(f"បាន{action} {abs(amount)} ក្រេឌីត ជូន '{username}'")
+    except:
+        flash("បញ្ហាក្នុងការកែប្រែក្រេឌីត", "error")
     return redirect('/dashboard')
 
 @app.route('/adjust_credits/<username>/<int:amount>')
@@ -739,11 +746,10 @@ def update_plan():
 def adjust_credits(username, amount):
     conn = get_db()
     conn.execute("UPDATE users SET credits = credits + ? WHERE username = ?", (amount, username))
-    # Ensure credits don't go negative
     conn.execute("UPDATE users SET credits = 0 WHERE credits < 0 AND username = ?", (username,))
     conn.commit(); conn.close()
     action = "បន្ថែម" if amount > 0 else "ដក"
-    flash(f"បាន{action} {abs(amount)} ក្រេឌីត សម្រាប់អ្នកប្រើប្រាស់ '{username}' ដោយជោគជ័យ!")
+    flash(f"បាន{action} {abs(amount)} ក្រេឌីត ជូន '{username}'")
     return redirect('/dashboard')
 
 @app.route('/generate_vouchers', methods=['POST'])
@@ -754,22 +760,18 @@ def generate_vouchers():
     for _ in range(qty):
         conn.execute("INSERT INTO vouchers VALUES (?, ?, 0, ?, NULL)", (generate_voucher_code(amt), amt, str(datetime.now())))
     conn.commit(); conn.close()
+    flash(f"បានបង្កើត Voucher ចំនួន {qty} សន្លឹក")
     return redirect('/vouchers')
 
 @app.route('/update_settings', methods=['POST'])
 @login_required
 def update_settings():
-    # Handle normal settings
-    if 'latest_version' in request.form:
-        set_setting('latest_version', request.form.get('latest_version'))
-    if 'update_desc' in request.form:
-        set_setting('update_desc', request.form.get('update_desc'))
+    if 'latest_version' in request.form: set_setting('latest_version', request.form.get('latest_version'))
+    if 'update_desc' in request.form: set_setting('update_desc', request.form.get('update_desc'))
     
-    # Handle Update Live Toggle (Checkbox sends 'on' if checked, else nothing)
     is_live = '1' if request.form.get('update_is_live') else '0'
     set_setting('update_is_live', is_live)
 
-    # Handle File Upload
     if 'update_file' in request.files:
         file = request.files['update_file']
         if file and file.filename != '' and allowed_file(file.filename):
@@ -777,19 +779,15 @@ def update_settings():
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             set_setting('update_filename', filename)
 
-    # Handle other general settings
-    if 'sora_api_key' in request.form:
-         set_setting('sora_api_key', request.form.get('sora_api_key'))
-    if 'cost_sora_2' in request.form:
-         set_setting('cost_sora_2', request.form.get('cost_sora_2'))
-    if 'cost_sora_2_pro' in request.form:
-         set_setting('cost_sora_2_pro', request.form.get('cost_sora_2_pro'))
+    if 'sora_api_key' in request.form: set_setting('sora_api_key', request.form.get('sora_api_key'))
+    if 'cost_sora_2' in request.form: set_setting('cost_sora_2', request.form.get('cost_sora_2'))
+    if 'cost_sora_2_pro' in request.form: set_setting('cost_sora_2_pro', request.form.get('cost_sora_2_pro'))
     
-    # Limits
     if 'limit_mini' in request.form: set_setting('limit_mini', request.form.get('limit_mini'))
     if 'limit_basic' in request.form: set_setting('limit_basic', request.form.get('limit_basic'))
     if 'limit_standard' in request.form: set_setting('limit_standard', request.form.get('limit_standard'))
 
+    flash("បានរក្សាទុកការកំណត់!", "success")
     return redirect('/settings')
 
 @app.route('/update_broadcast', methods=['POST'])
@@ -819,7 +817,6 @@ def verify_user():
     c.execute("SELECT credits, expiry_date, is_active, plan, status FROM users WHERE username=? AND api_key=?", (d.get('username'), d.get('api_key')))
     u = c.fetchone()
     
-    # Get Global Settings
     b = get_setting('broadcast_msg', '')
     bc = get_setting('broadcast_color', '#FF0000')
     lv = get_setting('latest_version', '1.0.0')
@@ -827,18 +824,16 @@ def verify_user():
     live = get_setting('update_is_live', '0')
     fname = get_setting('update_filename', '')
     
-    # Generate Download URL if file exists
     dl_url = ""
-    if fname:
-        dl_url = f"{request.url_root}static/updates/{fname}"
-
+    if fname: dl_url = f"{request.url_root}static/updates/{fname}"
     conn.close()
     
     if not u: return jsonify({"valid": False, "message": "Invalid Credentials"})
-    if not u[2]: return jsonify({"valid": False, "message": "Banned"})
-    if u[4] == 'banned': return jsonify({"valid": False, "message": "Banned"})
-    if u[4] == 'suspended': return jsonify({"valid": False, "message": "Suspended"})
-    if datetime.now() > datetime.strptime(u[1], "%Y-%m-%d"): return jsonify({"valid": False, "message": "Expired"})
+    if not u[2]: return jsonify({"valid": False, "message": "Account Banned"})
+    if u[4] == 'banned': return jsonify({"valid": False, "message": "Account Banned"})
+    if u[4] == 'suspended': return jsonify({"valid": False, "message": "Account Suspended"})
+    if u[4] == 'inactive': return jsonify({"valid": False, "message": "Account Inactive"})
+    if datetime.now() > datetime.strptime(u[1], "%Y-%m-%d"): return jsonify({"valid": False, "message": "License Expired"})
     
     limit = int(get_setting(f"limit_{u[3].lower()}", 3))
     
@@ -862,24 +857,24 @@ def redeem():
     conn = get_db(); c = conn.cursor()
     c.execute("SELECT amount, is_used FROM vouchers WHERE code=?", (d.get('code'),))
     v = c.fetchone()
-    if not v or v[1]: conn.close(); return jsonify({"success": False, "message": "Invalid/Used Code"})
+    if not v or v[1]: conn.close(); return jsonify({"success": False, "message": "កូដមិនត្រឹមត្រូវ ឬបានប្រើរួច"})
     c.execute("UPDATE users SET credits=credits+? WHERE username=?", (v[0], d.get('username')))
     c.execute("UPDATE vouchers SET is_used=1, used_by=? WHERE code=?", (d.get('username'), d.get('code')))
     conn.commit(); conn.close()
-    return jsonify({"success": True, "message": f"Added {v[0]} Credits"})
+    return jsonify({"success": True, "message": f"បានបញ្ចូល {v[0]} ក្រេឌីត"})
 
 @app.route('/api/proxy/generate', methods=['POST'])
 def proxy_gen():
     auth = request.headers.get("Client-Auth", ""); 
     if ":" not in auth: return jsonify({"code":-1}), 401
     u, k = auth.split(":")
-    conn = get_db(); row = conn.execute("SELECT credits, is_active FROM users WHERE username=? AND api_key=?", (u,k)).fetchone()
+    conn = get_db(); row = conn.execute("SELECT credits, is_active, status FROM users WHERE username=? AND api_key=?", (u,k)).fetchone()
     if not row: conn.close(); return jsonify({"code":-1}), 401
-    if not row[1]: conn.close(); return jsonify({"code":-1, "message": "Banned"}), 403
+    if row[2] != 'active': conn.close(); return jsonify({"code":-1, "message": "Account Not Active"}), 403
     
     model = request.json.get('model', '')
     cost = int(get_setting('cost_sora_2_pro', 35)) if "pro" in model else int(get_setting('cost_sora_2', 25))
-    if row[0] < cost: conn.close(); return jsonify({"code":-1, "message": "Insufficient Credits"}), 402
+    if row[0] < cost: conn.close(); return jsonify({"code":-1, "message": "ក្រេឌីតមិនគ្រប់គ្រាន់"}), 402
     
     try:
         real_key = get_setting('sora_api_key')
