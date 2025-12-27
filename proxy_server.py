@@ -1,4 +1,4 @@
-# --- START OF FILE admin_dashboardnew26.py ---
+# --- START OF FILE admin_dashboard300.py ---
 
 from flask import Flask, request, jsonify, render_template_string, redirect, url_for, session, send_file, abort
 import requests
@@ -182,6 +182,13 @@ MODERN_DASHBOARD_HTML = """
         /* Toast Notification */
         #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 100; transform: translateY(100px); opacity: 0; transition: all 0.5s ease; }
         #toast-container.show { transform: translateY(0); opacity: 1; }
+        
+        /* Mobile sidebar styles */
+        @media (max-width: 767px) {
+            #sidebarOverlay {
+                transition: opacity 0.3s ease;
+            }
+        }
     </style>
 </head>
 <body class="flex h-screen bg-slate-50 text-slate-800 font-sans overflow-hidden">
@@ -196,14 +203,20 @@ MODERN_DASHBOARD_HTML = """
     </div>
 
     <!-- Sidebar -->
-    <aside class="w-64 bg-white border-r border-slate-200 flex flex-col z-20 shadow-xl hidden md:flex">
-        <div class="h-16 flex items-center px-6 border-b border-slate-100">
-            <i class="fas fa-cube text-primary text-2xl mr-3"></i>
-            <span class="text-xl font-bold text-slate-800">SoraAdmin</span>
+    <aside id="sidebar" class="w-64 bg-white border-r border-slate-200 flex flex-col z-30 shadow-xl fixed md:relative h-full -translate-x-full md:translate-x-0 transition-transform duration-300">
+        <div class="h-16 flex items-center px-6 border-b border-slate-100 justify-between">
+            <div class="flex items-center">
+                <i class="fas fa-cube text-primary text-2xl mr-3"></i>
+                <span class="text-xl font-bold text-slate-800">SoraAdmin</span>
+            </div>
+            <!-- Close button for mobile -->
+            <button id="closeSidebar" class="md:hidden text-slate-500 hover:text-red-500">
+                <i class="fas fa-times text-lg"></i>
+            </button>
         </div>
         <nav class="flex-1 overflow-y-auto py-6 px-3 space-y-1">
             <a href="/dashboard" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'users' else '' }}"><i class="fas fa-users w-8 text-center"></i> <span class="font-medium">អ្នកប្រើប្រាស់</span></a>
-            <a href="/vouchers" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'vouchers' else '' }}"><i class="fas fa-ticket-alt w-8 text-center"></i> <span class="font-medium">ប័ណ្ណបញ្ចូលលុយ</span></a>
+            <a href="/vouchers" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'vouchers' else '' }}"><i class="fas fa-ticket-alt w-8 text-center"></i> <span class="font-medium">ប័ណ្ណបញ្ចូនលុយ</span></a>
             <a href="/api_keys" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'api_keys' else '' }}"><i class="fas fa-key w-8 text-center"></i> <span class="font-medium">API Keys</span></a>
             <a href="/logs" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'logs' else '' }}"><i class="fas fa-list-alt w-8 text-center"></i> <span class="font-medium">កំណត់ត្រា</span></a>
             <a href="/settings" class="sidebar-link flex items-center px-3 py-2.5 text-slate-600 rounded-lg hover:bg-slate-50 transition {{ 'active' if page == 'settings' else '' }}"><i class="fas fa-cogs w-8 text-center"></i> <span class="font-medium">ការកំណត់</span></a>
@@ -213,12 +226,20 @@ MODERN_DASHBOARD_HTML = """
         </div>
     </aside>
 
+    <!-- Mobile overlay -->
+    <div id="sidebarOverlay" class="fixed inset-0 bg-black/50 z-20 md:hidden hidden"></div>
+
     <!-- Main Content -->
     <main class="flex-1 overflow-y-auto relative bg-slate-50">
-        <header class="bg-white/80 backdrop-blur-md sticky top-0 z-10 border-b border-slate-200 px-8 py-4 flex justify-between items-center">
-            <h2 class="text-xl font-bold text-slate-800">
+        <header class="bg-white/80 backdrop-blur-md sticky top-0 z-10 border-b border-slate-200 px-4 md:px-8 py-4 flex justify-between items-center">
+            <!-- Hamburger button for mobile -->
+            <button id="mobileMenuButton" class="md:hidden text-slate-600 hover:text-primary focus:outline-none p-2 rounded-lg hover:bg-slate-100 transition">
+                <i class="fas fa-bars text-lg"></i>
+            </button>
+            
+            <h2 class="text-lg md:text-xl font-bold text-slate-800 ml-2 md:ml-0">
                 {% if page == 'users' %}👥 គ្រប់គ្រងអ្នកប្រើប្រាស់ (User Management)
-                {% elif page == 'vouchers' %}🎫 ប័ណ្ណបញ្ចូលលុយ (Vouchers)
+                {% elif page == 'vouchers' %}🎫 ប័ណ្ណបញ្ចូនលុយ (Vouchers)
                 {% elif page == 'api_keys' %}🔑 គ្រប់គ្រង API Keys
                 {% elif page == 'logs' %}📜 កំណត់ត្រាសកម្មភាព
                 {% else %}⚙️ ការកំណត់ប្រព័ន្ធ{% endif %}
@@ -226,7 +247,7 @@ MODERN_DASHBOARD_HTML = """
             <div class="flex items-center gap-3"><span class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span><span class="text-xs font-bold text-emerald-600">System Live</span></div>
         </header>
 
-        <div class="p-8 max-w-7xl mx-auto">
+        <div class="p-4 md:p-8 max-w-7xl mx-auto">
             {% if page == 'users' %}
             
             <!-- Plan Stats Cards (NEW) -->
@@ -250,68 +271,70 @@ MODERN_DASHBOARD_HTML = """
             </div>
 
             <!-- Add User Form -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-8">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 md:p-6 mb-8">
                 <h3 class="font-bold text-slate-700 mb-4 flex items-center gap-2"><i class="fas fa-user-plus text-primary"></i> បង្កើតគណនីថ្មី</h3>
                 <form action="/add_user" method="POST" class="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
-                    <div class="col-span-1"><label class="text-xs font-bold text-slate-500">Username</label><input type="text" name="username" class="w-full mt-1 px-3 py-2 bg-slate-50 border rounded-lg" required></div>
-                    <div class="col-span-1"><label class="text-xs font-bold text-slate-500">Credits</label><input type="number" name="credits" class="w-full mt-1 px-3 py-2 bg-slate-50 border rounded-lg" value="100" required></div>
-                    <div class="col-span-1"><label class="text-xs font-bold text-slate-500">Plan</label>
+                    <div class="col-span-1 md:col-span-1"><label class="text-xs font-bold text-slate-500">Username</label><input type="text" name="username" class="w-full mt-1 px-3 py-2 bg-slate-50 border rounded-lg" required></div>
+                    <div class="col-span-1 md:col-span-1"><label class="text-xs font-bold text-slate-500">Credits</label><input type="number" name="credits" class="w-full mt-1 px-3 py-2 bg-slate-50 border rounded-lg" value="100" required></div>
+                    <div class="col-span-1 md:col-span-1"><label class="text-xs font-bold text-slate-500">Plan</label>
                         <select name="plan" class="w-full mt-1 px-3 py-2 bg-slate-50 border rounded-lg">
                             <option value="Mini">Mini</option><option value="Basic">Basic</option><option value="Standard">Standard</option><option value="Premium" selected>Premium</option>
                         </select>
                     </div>
-                    <div class="col-span-1"><label class="text-xs font-bold text-slate-500">Expiry</label><input type="date" name="expiry" class="w-full mt-1 px-3 py-2 bg-slate-50 border rounded-lg" required></div>
-                    <div class="col-span-1"><label class="text-xs font-bold text-slate-500">API Key Assign</label>
+                    <div class="col-span-1 md:col-span-1"><label class="text-xs font-bold text-slate-500">Expiry</label><input type="date" name="expiry" class="w-full mt-1 px-3 py-2 bg-slate-50 border rounded-lg" required></div>
+                    <div class="col-span-1 md:col-span-1"><label class="text-xs font-bold text-slate-500">API Key Assign</label>
                         <select name="assigned_key" class="w-full mt-1 px-3 py-2 bg-slate-50 border rounded-lg">
                             <option value="">Auto (Pool)</option>
                             {% for k in api_keys %}<option value="{{ k.key_value }}">{{ k.label }}</option>{% endfor %}
                         </select>
                     </div>
-                    <div class="col-span-1"><button class="w-full bg-primary hover:bg-indigo-600 text-white font-bold py-2 rounded-lg shadow-lg">Create</button></div>
+                    <div class="col-span-1 md:col-span-1"><button class="w-full bg-primary hover:bg-indigo-600 text-white font-bold py-2 rounded-lg shadow-lg">Create</button></div>
                 </form>
             </div>
 
             <!-- Users Table -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <table class="w-full text-sm text-left">
-                    <thead class="bg-slate-50 text-slate-500 text-xs uppercase border-b"><tr><th class="px-6 py-4">User Info</th><th class="px-6 py-4">Status & Activity</th><th class="px-6 py-4">Plan & Credits</th><th class="px-6 py-4 text-right">Actions</th></tr></thead>
-                    <tbody class="divide-y divide-slate-100">
-                        {% for user in users %}
-                        <tr class="hover:bg-slate-50 group transition cursor-pointer" onclick="openUserModal({{ user | tojson | forceescape }})">
-                            <td class="px-6 py-4">
-                                <div class="font-bold text-slate-700 text-base flex items-center gap-2">
-                                    {{ user.username }} 
-                                    <button onclick="event.stopPropagation(); copyUserInfo('{{user.username}}', '{{user.api_key}}', '{{user.plan}}', '{{user.credits}}', '{{user.expiry_date}}')" class="text-slate-400 hover:text-primary p-1 bg-slate-100 rounded text-xs transition" title="Copy Info"><i class="fas fa-copy"></i></button>
-                                </div>
-                                <div class="font-mono text-xs text-slate-400 mt-1">{{ user.api_key }}</div>
-                            </td>
-                            <td class="px-6 py-4">
-                                <div class="flex items-center gap-2 mb-1">
-                                    {% if user.is_active == 1 %}<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600 text-xs font-bold">Active</span>
-                                    {% elif user.is_active == 2 %}<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-600 text-xs font-bold">Suspended</span>
-                                    {% else %}<span class="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-bold">Banned</span>{% endif %}
-                                </div>
-                                <div class="text-xs text-slate-500">Last seen: {{ user.last_seen if user.last_seen else 'Never' }}</div>
-                            </td>
-                            <td class="px-6 py-4">
-                                <div class="flex items-center gap-2">
-                                    <span class="font-bold text-lg {{ 'text-red-600 animate-pulse' if user.credits < 50 else 'text-emerald-600' }}">{{ user.credits }}</span>
-                                    <span class="text-xs text-slate-400">credits</span>
-                                </div>
-                                <span class="px-2 py-0.5 rounded border text-xs font-bold 
-                                    {% if user.plan == 'Premium' %}bg-purple-100 text-purple-600 border-purple-200
-                                    {% elif user.plan == 'Standard' %}bg-blue-100 text-blue-600 border-blue-200
-                                    {% else %}bg-slate-50 text-slate-600 border-slate-200{% endif %}">{{ user.plan }}</span>
-                            </td>
-                            <td class="px-6 py-4 text-right"><button class="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100 font-bold text-xs">Manage</button></td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-slate-50 text-slate-500 text-xs uppercase border-b"><tr><th class="px-4 md:px-6 py-4">User Info</th><th class="px-4 md:px-6 py-4">Status & Activity</th><th class="px-4 md:px-6 py-4">Plan & Credits</th><th class="px-4 md:px-6 py-4 text-right">Actions</th></tr></thead>
+                        <tbody class="divide-y divide-slate-100">
+                            {% for user in users %}
+                            <tr class="hover:bg-slate-50 group transition cursor-pointer" onclick="openUserModal({{ user | tojson | forceescape }})">
+                                <td class="px-4 md:px-6 py-4">
+                                    <div class="font-bold text-slate-700 text-base flex items-center gap-2">
+                                        {{ user.username }} 
+                                        <button onclick="event.stopPropagation(); copyUserInfo('{{user.username}}', '{{user.api_key}}', '{{user.plan}}', '{{user.credits}}', '{{user.expiry_date}}')" class="text-slate-400 hover:text-primary p-1 bg-slate-100 rounded text-xs transition" title="Copy Info"><i class="fas fa-copy"></i></button>
+                                    </div>
+                                    <div class="font-mono text-xs text-slate-400 mt-1 truncate">{{ user.api_key }}</div>
+                                </td>
+                                <td class="px-4 md:px-6 py-4">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        {% if user.is_active == 1 %}<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600 text-xs font-bold">Active</span>
+                                        {% elif user.is_active == 2 %}<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-600 text-xs font-bold">Suspended</span>
+                                        {% else %}<span class="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-bold">Banned</span>{% endif %}
+                                    </div>
+                                    <div class="text-xs text-slate-500">Last seen: {{ user.last_seen if user.last_seen else 'Never' }}</div>
+                                </td>
+                                <td class="px-4 md:px-6 py-4">
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-bold text-lg {{ 'text-red-600 animate-pulse' if user.credits < 50 else 'text-emerald-600' }}">{{ user.credits }}</span>
+                                        <span class="text-xs text-slate-400">credits</span>
+                                    </div>
+                                    <span class="px-2 py-0.5 rounded border text-xs font-bold 
+                                        {% if user.plan == 'Premium' %}bg-purple-100 text-purple-600 border-purple-200
+                                        {% elif user.plan == 'Standard' %}bg-blue-100 text-blue-600 border-blue-200
+                                        {% else %}bg-slate-50 text-slate-600 border-slate-200{% endif %}">{{ user.plan }}</span>
+                                </td>
+                                <td class="px-4 md:px-6 py-4 text-right"><button class="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100 font-bold text-xs">Manage</button></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             {% elif page == 'vouchers' %}
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-8">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 md:p-6 mb-8">
                 <h3 class="font-bold text-slate-700 mb-4">Generate Vouchers</h3>
                 <form action="/generate_vouchers" method="POST" class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                     <div><label class="text-xs font-bold text-slate-500">Amount</label><input type="number" name="amount" class="w-full mt-1 px-3 py-2 bg-slate-50 border rounded-lg" required></div>
@@ -322,42 +345,46 @@ MODERN_DASHBOARD_HTML = """
                 </form>
             </div>
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <table class="w-full text-sm text-left">
-                    <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th class="px-6 py-3">Code</th><th class="px-6 py-3">Value</th><th class="px-6 py-3">Usage</th><th class="px-6 py-3">Expiry</th><th class="px-6 py-3">Action</th></tr></thead>
-                    <tbody class="divide-y divide-slate-100">
-                        {% for v in vouchers %}
-                        <tr>
-                            <td class="px-6 py-3 font-mono font-bold select-all">{{ v.code }}</td>
-                            <td class="px-6 py-3 font-bold text-emerald-600">+{{ v.amount }}</td>
-                            <td class="px-6 py-3">{{ v.current_uses }} / {{ v.max_uses }}</td>
-                            <td class="px-6 py-3 text-xs">{{ v.expiry_date if v.expiry_date else '-' }}</td>
-                            <td class="px-6 py-3"><a href="/delete_voucher/{{ v.code }}" class="text-red-400 hover:text-red-600"><i class="fas fa-trash"></i></a></td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-
-            {% elif page == 'api_keys' %}
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="md:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                    <h3 class="font-bold text-slate-700 mb-4">API Keys Pool</h3>
+                <div class="overflow-x-auto">
                     <table class="w-full text-sm text-left">
-                        <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th class="px-4 py-3">Label</th><th class="px-4 py-3">Key</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Errors</th><th class="px-4 py-3">Action</th></tr></thead>
+                        <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th class="px-4 md:px-6 py-3">Code</th><th class="px-4 md:px-6 py-3">Value</th><th class="px-4 md:px-6 py-3">Usage</th><th class="px-4 md:px-6 py-3">Expiry</th><th class="px-4 md:px-6 py-3">Action</th></tr></thead>
                         <tbody class="divide-y divide-slate-100">
-                            {% for k in api_keys %}
+                            {% for v in vouchers %}
                             <tr>
-                                <td class="px-4 py-3 font-bold">{{ k.label }}</td>
-                                <td class="px-4 py-3 font-mono text-xs">{{ k.key_value[:15] }}...</td>
-                                <td class="px-4 py-3">{% if k.is_active %}<span class="text-emerald-500 text-xs font-bold">Active</span>{% else %}<span class="text-red-500">Inactive</span>{% endif %}</td>
-                                <td class="px-4 py-3">{{ k.error_count }}</td>
-                                <td class="px-4 py-3"><a href="/delete_key/{{ k.key_value }}" class="text-red-400"><i class="fas fa-trash"></i></a></td>
+                                <td class="px-4 md:px-6 py-3 font-mono font-bold select-all text-xs md:text-sm">{{ v.code }}</td>
+                                <td class="px-4 md:px-6 py-3 font-bold text-emerald-600">+{{ v.amount }}</td>
+                                <td class="px-4 md:px-6 py-3">{{ v.current_uses }} / {{ v.max_uses }}</td>
+                                <td class="px-4 md:px-6 py-3 text-xs">{{ v.expiry_date if v.expiry_date else '-' }}</td>
+                                <td class="px-4 md:px-6 py-3"><a href="/delete_voucher/{{ v.code }}" class="text-red-400 hover:text-red-600"><i class="fas fa-trash"></i></a></td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
-                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 h-fit">
+            </div>
+
+            {% elif page == 'api_keys' %}
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="md:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 p-4 md:p-6">
+                    <h3 class="font-bold text-slate-700 mb-4">API Keys Pool</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th class="px-4 py-3">Label</th><th class="px-4 py-3">Key</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Errors</th><th class="px-4 py-3">Action</th></tr></thead>
+                            <tbody class="divide-y divide-slate-100">
+                                {% for k in api_keys %}
+                                <tr>
+                                    <td class="px-4 py-3 font-bold">{{ k.label }}</td>
+                                    <td class="px-4 py-3 font-mono text-xs">{{ k.key_value[:15] }}...</td>
+                                    <td class="px-4 py-3">{% if k.is_active %}<span class="text-emerald-500 text-xs font-bold">Active</span>{% else %}<span class="text-red-500">Inactive</span>{% endif %}</td>
+                                    <td class="px-4 py-3">{{ k.error_count }}</td>
+                                    <td class="px-4 py-3"><a href="/delete_key/{{ k.key_value }}" class="text-red-400"><i class="fas fa-trash"></i></a></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 md:p-6 h-fit">
                     <h3 class="font-bold text-slate-700 mb-4">Add Key</h3>
                     <form action="/add_api_key" method="POST" class="space-y-3">
                         <input type="text" name="label" placeholder="Label Name" class="w-full px-3 py-2 bg-slate-50 border rounded-lg" required>
@@ -369,27 +396,29 @@ MODERN_DASHBOARD_HTML = """
 
             {% elif page == 'logs' %}
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <table class="w-full text-sm text-left">
-                    <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th class="px-6 py-3">Time</th><th class="px-6 py-3">User</th><th class="px-6 py-3">Action</th><th class="px-6 py-3">Cost</th><th class="px-6 py-3">Status</th></tr></thead>
-                    <tbody class="divide-y divide-slate-100">
-                        {% for l in logs %}
-                        <tr><td class="px-6 py-3 text-xs text-slate-400 font-mono">{{ l.timestamp }}</td><td class="px-6 py-3 font-bold">{{ l.username }}</td><td class="px-6 py-3">{{ l.action }}</td><td class="px-6 py-3 font-bold text-red-500">{{ l.cost }}</td><td class="px-6 py-3 text-xs">{{ l.status }}</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th class="px-4 md:px-6 py-3">Time</th><th class="px-4 md:px-6 py-3">User</th><th class="px-4 md:px-6 py-3">Action</th><th class="px-4 md:px-6 py-3">Cost</th><th class="px-4 md:px-6 py-3">Status</th></tr></thead>
+                        <tbody class="divide-y divide-slate-100">
+                            {% for l in logs %}
+                            <tr><td class="px-4 md:px-6 py-3 text-xs text-slate-400 font-mono">{{ l.timestamp }}</td><td class="px-4 md:px-6 py-3 font-bold">{{ l.username }}</td><td class="px-4 md:px-6 py-3">{{ l.action }}</td><td class="px-4 md:px-6 py-3 font-bold text-red-500">{{ l.cost }}</td><td class="px-4 md:px-6 py-3 text-xs">{{ l.status }}</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             {% elif page == 'settings' %}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <!-- Update System (Restored) -->
-                <div class="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-xl p-6 text-white shadow-xl md:col-span-2">
+                <div class="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-xl p-4 md:p-6 text-white shadow-xl md:col-span-2">
                     <h4 class="font-bold text-lg mb-4 flex items-center gap-2"><i class="fas fa-cloud-upload-alt"></i> ប្រព័ន្ធអាប់ដេត (ZIP/URL Update)</h4>
                     <form action="/update_settings" method="POST" class="space-y-4">
                         <div class="flex items-center justify-between bg-white/10 p-4 rounded-lg border border-white/20">
                             <div><h5 class="font-bold">Enable Update Push</h5><p class="text-xs opacity-70">Client will auto-download and extract ZIP.</p></div>
                             <label class="switch"><input type="checkbox" name="update_is_live" {% if update_is_live == '1' %}checked{% endif %}><span class="slider"></span></label>
                         </div>
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div><label class="text-xs opacity-70 block mb-1">Latest Version</label><input type="text" name="latest_version" value="{{ latest_version }}" class="w-full bg-white/20 border border-white/30 rounded px-3 py-2 backdrop-blur outline-none"></div>
                             <div><label class="text-xs opacity-70 block mb-1">ZIP Download URL</label><input type="text" name="update_url" value="{{ update_url }}" class="w-full bg-white/20 border border-white/30 rounded px-3 py-2 backdrop-blur outline-none" placeholder="https://mysite.com/update.zip"></div>
                         </div>
@@ -399,7 +428,7 @@ MODERN_DASHBOARD_HTML = """
                 </div>
 
                  <!-- Broadcast (Restored) -->
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
                     <h4 class="font-bold text-slate-700 mb-4 pb-2 border-b">📢 ផ្សព្វផ្សាយដំណឹង (Broadcast)</h4>
                     <form action="/update_broadcast" method="POST" class="space-y-3">
                         <div class="flex gap-2">
@@ -414,10 +443,10 @@ MODERN_DASHBOARD_HTML = """
                 </div>
 
                 <!-- Costs -->
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
                      <h4 class="font-bold text-slate-700 mb-4 pb-2 border-b">System Costs & Limits</h4>
                      <form action="/update_settings" method="POST" class="space-y-4">
-                         <div class="grid grid-cols-2 gap-4">
+                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                              <div><label class="text-xs font-bold text-slate-500">Sora-2 Cost</label><input type="number" name="cost_sora_2" value="{{ costs.sora_2 }}" class="w-full mt-1 border rounded p-2"></div>
                              <div><label class="text-xs font-bold text-slate-500">Sora-2 Pro Cost</label><input type="number" name="cost_sora_2_pro" value="{{ costs.sora_2_pro }}" class="w-full mt-1 border rounded p-2"></div>
                          </div>
@@ -433,9 +462,9 @@ MODERN_DASHBOARD_HTML = """
     <div id="userModal" class="modal opacity-0 pointer-events-none fixed w-full h-full top-0 left-0 flex items-center justify-center z-50">
         <div class="modal-overlay absolute w-full h-full bg-gray-900 opacity-50" onclick="closeUserModal()"></div>
         <div class="modal-container bg-white w-11/12 md:max-w-2xl mx-auto rounded-xl shadow-2xl z-50 overflow-y-auto max-h-[90vh]">
-            <div class="modal-content py-6 px-8 text-left">
+            <div class="modal-content py-6 px-4 md:px-8 text-left">
                 <div class="flex justify-between items-center pb-3 border-b">
-                    <p class="text-2xl font-bold text-slate-800" id="modalUsername">User Settings</p>
+                    <p class="text-xl md:text-2xl font-bold text-slate-800" id="modalUsername">User Settings</p>
                     <div class="cursor-pointer z-50" onclick="closeUserModal()"><i class="fas fa-times text-slate-500 hover:text-red-500 text-xl"></i></div>
                 </div>
                 <form action="/update_user_full" method="POST" class="mt-4 space-y-6">
@@ -445,13 +474,13 @@ MODERN_DASHBOARD_HTML = """
                         <a id="btnSuspend" href="#" class="flex-1 py-2 text-center rounded bg-amber-50 text-amber-600 hover:bg-amber-100 font-bold text-sm">Suspend</a>
                         <a id="btnBan" href="#" class="flex-1 py-2 text-center rounded bg-red-50 text-red-600 hover:bg-red-100 font-bold text-sm">Ban</a>
                     </div>
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div><label class="block text-xs font-bold text-slate-500 mb-1">User Plan</label><select name="plan" id="modalPlan" class="w-full px-3 py-2 bg-slate-50 border rounded-lg"><option value="Mini">Mini</option><option value="Basic">Basic</option><option value="Standard">Standard</option><option value="Premium">Premium</option></select></div>
                         <div><label class="block text-xs font-bold text-slate-500 mb-1">Add/Remove Credits</label><input type="number" name="credit_adj" placeholder="+/- Amount" class="w-full px-3 py-2 bg-slate-50 border rounded-lg"></div>
                     </div>
                     <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
                         <h5 class="font-bold text-sm text-slate-700 mb-3">Custom Override</h5>
-                        <div class="grid grid-cols-3 gap-3">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div><label class="text-[10px] font-bold text-slate-400">Concurrency</label><input type="number" name="custom_limit" id="modalLimit" class="w-full mt-1 border rounded p-1.5 text-sm"></div>
                             <div><label class="text-[10px] font-bold text-slate-400">Cost (Sora-2)</label><input type="number" name="custom_cost_2" id="modalCost2" class="w-full mt-1 border rounded p-1.5 text-sm"></div>
                             <div><label class="text-[10px] font-bold text-slate-400">Cost (Pro)</label><input type="number" name="custom_cost_pro" id="modalCostPro" class="w-full mt-1 border rounded p-1.5 text-sm"></div>
@@ -465,6 +494,51 @@ MODERN_DASHBOARD_HTML = """
     </div>
 
     <script>
+        // Toggle sidebar for mobile
+        const mobileMenuButton = document.getElementById('mobileMenuButton');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
+        const closeSidebarBtn = document.getElementById('closeSidebar');
+
+        if (mobileMenuButton) {
+            mobileMenuButton.addEventListener('click', () => {
+                sidebar.classList.remove('-translate-x-full');
+                sidebarOverlay.classList.remove('hidden');
+                document.body.classList.add('overflow-hidden');
+            });
+        }
+
+        if (closeSidebarBtn) {
+            closeSidebarBtn.addEventListener('click', closeSidebar);
+        }
+
+        if (sidebarOverlay) {
+            sidebarOverlay.addEventListener('click', closeSidebar);
+        }
+
+        function closeSidebar() {
+            sidebar.classList.add('-translate-x-full');
+            sidebarOverlay.classList.add('hidden');
+            document.body.classList.remove('overflow-hidden');
+        }
+
+        // Close sidebar when clicking on a menu link (mobile)
+        document.querySelectorAll('.sidebar-link').forEach(link => {
+            link.addEventListener('click', () => {
+                if (window.innerWidth < 768) {
+                    closeSidebar();
+                }
+            });
+        });
+
+        // Close sidebar on escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeSidebar();
+            }
+        });
+
+        // Existing functions
         function showToast(message) {
             const toast = document.getElementById('toast-container');
             const msg = document.getElementById('toast-message');
@@ -793,4 +867,3 @@ def proxy_chk():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
-
