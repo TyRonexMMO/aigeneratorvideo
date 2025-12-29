@@ -53,19 +53,25 @@ def init_and_migrate_db():
         ("users", "custom_limit", "INTEGER DEFAULT NULL"), ("users", "custom_cost_2", "INTEGER DEFAULT NULL"),
         ("users", "custom_cost_pro", "INTEGER DEFAULT NULL"), ("users", "assigned_api_key", "TEXT DEFAULT NULL"),
         ("users", "last_seen", "TEXT"), ("users", "session_minutes", "INTEGER DEFAULT 0"), ("users", "daily_stats", "TEXT DEFAULT '{}'"),
-        # Logs
+        
+        # Logs - ADD task_id HERE
         ("logs", "username", "TEXT"), ("logs", "action", "TEXT"), ("logs", "cost", "INTEGER"), 
-        ("logs", "timestamp", "TEXT"), ("logs", "status", "TEXT"),
+        ("logs", "timestamp", "TEXT"), ("logs", "status", "TEXT"), ("logs", "task_id", "TEXT"),
+        
         # Vouchers
         ("vouchers", "amount", "INTEGER"), ("vouchers", "max_uses", "INTEGER DEFAULT 1"), 
         ("vouchers", "current_uses", "INTEGER DEFAULT 0"), ("vouchers", "expiry_date", "TEXT"), ("vouchers", "created_at", "TEXT"),
+        
         # Voucher Usage
         ("voucher_usage", "code", "TEXT"), ("voucher_usage", "username", "TEXT"), ("voucher_usage", "used_at", "TEXT"),
+        
         # Tasks
         ("tasks", "username", "TEXT"), ("tasks", "cost", "INTEGER"), ("tasks", "status", "TEXT"), 
         ("tasks", "created_at", "TEXT"), ("tasks", "model", "TEXT"),
+        
         # Banned IPs
         ("banned_ips", "reason", "TEXT"), ("banned_ips", "banned_at", "TEXT"),
+        
         # API Keys
         ("api_keys", "label", "TEXT"), ("api_keys", "is_active", "INTEGER DEFAULT 1"), ("api_keys", "error_count", "INTEGER DEFAULT 0")
     ]
@@ -707,7 +713,18 @@ def view_keys():
 def view_logs():
     try:
         conn = get_db()
-        l = conn.execute("SELECT timestamp, username, action, cost, status, task_id FROM logs ORDER BY id DESC LIMIT 100").fetchall()
+        # Check if task_id column exists
+        try:
+            l = conn.execute("SELECT timestamp, username, action, cost, status, task_id FROM logs ORDER BY id DESC LIMIT 100").fetchall()
+        except sqlite3.OperationalError as e:
+            # If column doesn't exist yet, select without it
+            if "no such column" in str(e) and "task_id" in str(e):
+                l = conn.execute("SELECT timestamp, username, action, cost, status FROM logs ORDER BY id DESC LIMIT 100").fetchall()
+                # Add empty task_id to each row
+                l = [list(row) + [''] for row in l]
+            else:
+                raise e
+        
         conn.close()
         return render_template_string(MODERN_DASHBOARD_HTML, page='logs', logs=l)
     except Exception as e: 
@@ -988,7 +1005,9 @@ def proxy_gen():
                          timeout=120)
         
         if r.json().get("code") == 0:
-            tid = r.json().get('data', {}).get('taskId')
+            data = r.json().get('data', {})
+            tid = data.get('taskId') or data.get('task_id') or data.get('id')
+            
             if tid: 
                 conn.execute("INSERT INTO tasks (task_id, username, cost, status, created_at, model) VALUES (?, ?, ?, ?, ?, ?)", 
                            (tid, u_name, cost, 'pending', str(datetime.now()), model))
@@ -996,9 +1015,9 @@ def proxy_gen():
             # Deduct credits immediately
             conn.execute("UPDATE users SET credits=credits-? WHERE username=?", (cost, u_name))
             
-            # Log the generation
+            # Log the generation with task_id
             conn.execute("INSERT INTO logs (username, action, cost, timestamp, status, task_id) VALUES (?, ?, ?, ?, ?, ?)", 
-                        (u_name, "generate", cost, str(datetime.now()), 'Pending', tid))
+                        (u_name, "generate", cost, str(datetime.now()), 'Pending', tid or ''))
             
             conn.commit()
             
@@ -1009,6 +1028,7 @@ def proxy_gen():
         return jsonify(r.json()), r.status_code
     
     except Exception as e: 
+        print(f"Error in proxy_gen: {e}")
         return jsonify({"code":-1, "message": str(e)}), 500
     
     finally: 
@@ -1030,7 +1050,8 @@ def proxy_chk():
         task = conn.execute("SELECT username, cost, status FROM tasks WHERE task_id=?", (task_id,)).fetchone()
         
         if task:
-            status = data.get('data', {}).get('status')
+            data_info = data.get('data', {})
+            status = data_info.get('status')
             
             # If task failed and not already refunded, refund credits
             if status == 'failed' and task['status'] != 'refunded':
@@ -1045,10 +1066,13 @@ def proxy_chk():
                 # Update daily stats
                 user_row = conn.execute("SELECT daily_stats FROM users WHERE username=?", (task['username'],)).fetchone()
                 if user_row and user_row[0]:
-                    stats = json.loads(user_row[0])
-                    stats['fail'] = stats.get('fail', 0) + 1
-                    stats['refunds'] = stats.get('refunds', 0) + 1
-                    conn.execute("UPDATE users SET daily_stats=? WHERE username=?", (json.dumps(stats), task['username']))
+                    try:
+                        stats = json.loads(user_row[0])
+                        stats['fail'] = stats.get('fail', 0) + 1
+                        stats['refunds'] = stats.get('refunds', 0) + 1
+                        conn.execute("UPDATE users SET daily_stats=? WHERE username=?", (json.dumps(stats), task['username']))
+                    except:
+                        pass
                 
                 conn.commit()
                 
@@ -1062,9 +1086,12 @@ def proxy_chk():
                 # Update daily stats
                 user_row = conn.execute("SELECT daily_stats FROM users WHERE username=?", (task['username'],)).fetchone()
                 if user_row and user_row[0]:
-                    stats = json.loads(user_row[0])
-                    stats['success'] = stats.get('success', 0) + 1
-                    conn.execute("UPDATE users SET daily_stats=? WHERE username=?", (json.dumps(stats), task['username']))
+                    try:
+                        stats = json.loads(user_row[0])
+                        stats['success'] = stats.get('success', 0) + 1
+                        conn.execute("UPDATE users SET daily_stats=? WHERE username=?", (json.dumps(stats), task['username']))
+                    except:
+                        pass
                 
                 conn.commit()
         
@@ -1077,3 +1104,4 @@ def proxy_chk():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+
