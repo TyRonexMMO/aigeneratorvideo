@@ -1,4 +1,4 @@
-# --- START OF FILE admin_dashboard300.py ---
+# --- START OF FILE admin_dashboard.py ---
 
 from flask import Flask, request, jsonify, render_template_string, redirect, url_for, session, send_file, abort
 import requests
@@ -92,8 +92,10 @@ def init_and_migrate_db():
         'update_is_live': '0', 'update_url': ''
     }
     for k, v in defaults.items():
-        try: c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
-        except: pass
+        try: 
+            c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
+        except: 
+            pass
 
     conn.commit()
     conn.close()
@@ -103,15 +105,18 @@ init_and_migrate_db()
 
 # --- HELPER FUNCTIONS ---
 def get_setting(key, default=None):
-    conn = get_db(); c = conn.cursor()
+    conn = get_db()
+    c = conn.cursor()
     c.execute("SELECT value FROM settings WHERE key=?", (key,))
-    row = c.fetchone(); conn.close()
+    row = c.fetchone()
+    conn.close()
     return row['value'] if row else default
 
 def set_setting(key, value):
     conn = get_db()
     conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
 
 def generate_voucher_code(amount):
     chars = string.ascii_uppercase + string.digits
@@ -127,7 +132,8 @@ def get_active_api_key(username=None):
     if username:
         user = conn.execute("SELECT assigned_api_key FROM users WHERE username=?", (username,)).fetchone()
         if user and user['assigned_api_key']:
-            conn.close(); return user['assigned_api_key']
+            conn.close()
+            return user['assigned_api_key']
     keys = conn.execute("SELECT key_value FROM api_keys WHERE is_active=1 ORDER BY RANDOM() LIMIT 1").fetchone()
     conn.close()
     return keys['key_value'] if keys else None
@@ -139,19 +145,30 @@ def security_guard():
     conn = get_db()
     is_banned = conn.execute("SELECT 1 FROM banned_ips WHERE ip=?", (ip,)).fetchone()
     conn.close()
-    if is_banned: return jsonify({"code": 403, "message": "Access Denied: IP Banned."}), 403
-    if 'logged_in' in session: return 
+    if is_banned: 
+        return jsonify({"code": 403, "message": "Access Denied: IP Banned."}), 403
+    
+    if 'logged_in' in session: 
+        return 
+    
     valid_starts = ['/api/', '/static/']
-    if request.path == f'/{ADMIN_LOGIN_PATH}' or any(request.path.startswith(p) for p in valid_starts) or request.path == '/': return 
+    if request.path == f'/{ADMIN_LOGIN_PATH}' or any(request.path.startswith(p) for p in valid_starts) or request.path == '/': 
+        return 
+    
     current_count = suspicious_tracker.get(ip, 0) + 1
     suspicious_tracker[ip] = current_count
+    
     if current_count >= MAX_SUSPICIOUS_ATTEMPTS:
         try:
             conn = get_db()
-            conn.execute("INSERT OR IGNORE INTO banned_ips (ip, reason, banned_at) VALUES (?, ?, ?)", (ip, f"Excessive scanning: {request.path}", str(datetime.now())))
-            conn.commit(); conn.close()
-        except: pass
+            conn.execute("INSERT OR IGNORE INTO banned_ips (ip, reason, banned_at) VALUES (?, ?, ?)", 
+                        (ip, f"Excessive scanning: {request.path}", str(datetime.now())))
+            conn.commit()
+            conn.close()
+        except: 
+            pass
         return jsonify({"code": 403, "message": "Access Denied"}), 403
+    
     return "Not Found", 404
 
 # --- DASHBOARD HTML ---
@@ -189,6 +206,9 @@ MODERN_DASHBOARD_HTML = """
                 transition: opacity 0.3s ease;
             }
         }
+        
+        /* Refund status styling */
+        .refund-status { color: #10b981; font-weight: bold; background-color: #d1fae5; padding: 2px 6px; border-radius: 4px; }
     </style>
 </head>
 <body class="flex h-screen bg-slate-50 text-slate-800 font-sans overflow-hidden">
@@ -398,10 +418,42 @@ MODERN_DASHBOARD_HTML = """
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm text-left">
-                        <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th class="px-4 md:px-6 py-3">Time</th><th class="px-4 md:px-6 py-3">User</th><th class="px-4 md:px-6 py-3">Action</th><th class="px-4 md:px-6 py-3">Cost</th><th class="px-4 md:px-6 py-3">Status</th></tr></thead>
+                        <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
+                            <tr>
+                                <th class="px-4 md:px-6 py-3">Time</th>
+                                <th class="px-4 md:px-6 py-3">User</th>
+                                <th class="px-4 md:px-6 py-3">Action</th>
+                                <th class="px-4 md:px-6 py-3">Cost</th>
+                                <th class="px-4 md:px-6 py-3">Status</th>
+                                <th class="px-4 md:px-6 py-3">Details</th>
+                            </tr>
+                        </thead>
                         <tbody class="divide-y divide-slate-100">
                             {% for l in logs %}
-                            <tr><td class="px-4 md:px-6 py-3 text-xs text-slate-400 font-mono">{{ l.timestamp }}</td><td class="px-4 md:px-6 py-3 font-bold">{{ l.username }}</td><td class="px-4 md:px-6 py-3">{{ l.action }}</td><td class="px-4 md:px-6 py-3 font-bold text-red-500">{{ l.cost }}</td><td class="px-4 md:px-6 py-3 text-xs">{{ l.status }}</td></tr>
+                            <tr>
+                                <td class="px-4 md:px-6 py-3 text-xs text-slate-400 font-mono">{{ l.timestamp }}</td>
+                                <td class="px-4 md:px-6 py-3 font-bold">{{ l.username }}</td>
+                                <td class="px-4 md:px-6 py-3">{{ l.action }}</td>
+                                <td class="px-4 md:px-6 py-3 font-bold {{ 'text-red-500' if l.cost > 0 else 'text-green-500' }}">
+                                    {% if 'Refund' in l.action or 'refund' in l.action %}
+                                        +{{ l.cost if l.cost else 0 }}
+                                    {% else %}
+                                        -{{ l.cost }}
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 md:px-6 py-3 text-xs">
+                                    {% if 'Refund' in l.action or 'refund' in l.action %}
+                                        <span class="refund-status">បង្វិលក្រេឌីត</span>
+                                    {% else %}
+                                        {{ l.status }}
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 md:px-6 py-3 text-xs text-slate-500">
+                                    {% if l.task_id %}
+                                        Task: {{ l.task_id[:8] }}...
+                                    {% endif %}
+                                </td>
+                            </tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -588,12 +640,14 @@ MODERN_DASHBOARD_HTML = """
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'logged_in' not in session: return redirect(f'/{ADMIN_LOGIN_PATH}')
+        if 'logged_in' not in session: 
+            return redirect(f'/{ADMIN_LOGIN_PATH}')
         return f(*args, **kwargs)
     return decorated_function
 
 @app.route('/')
-def home(): return jsonify({"status": "Server Running", "secure": True}), 200
+def home(): 
+    return jsonify({"status": "Server Running", "secure": True}), 200
 
 @app.route(f'/{ADMIN_LOGIN_PATH}', methods=['GET', 'POST'])
 def login():
@@ -601,10 +655,13 @@ def login():
         if request.form.get('password') == ADMIN_PASSWORD:
             session['logged_in'] = True
             return redirect('/dashboard')
+    
     return render_template_string("""<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Login</title><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-slate-100 h-screen flex items-center justify-center"><div class="bg-white p-8 rounded-xl shadow-xl w-96 border border-slate-200"><h2 class="text-2xl font-bold text-slate-800 mb-6 text-center">Admin Access</h2><form method="POST" class="space-y-4"><input type="password" name="password" placeholder="Password" class="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" required><button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg">Login</button></form></div></body></html>""")
 
 @app.route('/logout')
-def logout(): session.pop('logged_in', None); return redirect(f'/{ADMIN_LOGIN_PATH}')
+def logout(): 
+    session.pop('logged_in', None)
+    return redirect(f'/{ADMIN_LOGIN_PATH}')
 
 @app.route('/dashboard')
 @login_required
@@ -617,8 +674,9 @@ def dashboard():
     stats = {'Premium': 0, 'Standard': 0, 'Basic': 0, 'Mini': 0}
     for u in users:
         p = u.get('plan', 'Standard')
-        if p in stats: stats[p] += 1
-        
+        if p in stats: 
+            stats[p] += 1
+            
     conn.close()
     return render_template_string(MODERN_DASHBOARD_HTML, page='users', users=users, api_keys=api_keys, stats=stats)
 
@@ -630,7 +688,8 @@ def vouchers():
         v = conn.execute("SELECT code, amount, max_uses, current_uses, expiry_date FROM vouchers ORDER BY created_at DESC").fetchall()
         conn.close()
         return render_template_string(MODERN_DASHBOARD_HTML, page='vouchers', vouchers=v)
-    except Exception as e: return f"DB Error: {e}", 500
+    except Exception as e: 
+        return f"DB Error: {e}", 500
 
 @app.route('/api_keys')
 @login_required
@@ -640,17 +699,19 @@ def view_keys():
         keys = conn.execute("SELECT key_value, label, is_active, error_count FROM api_keys").fetchall()
         conn.close()
         return render_template_string(MODERN_DASHBOARD_HTML, page='api_keys', api_keys=keys)
-    except Exception as e: return f"DB Error: {e}", 500
+    except Exception as e: 
+        return f"DB Error: {e}", 500
 
 @app.route('/logs')
 @login_required
 def view_logs():
     try:
         conn = get_db()
-        l = conn.execute("SELECT timestamp, username, action, cost, status FROM logs ORDER BY id DESC LIMIT 100").fetchall()
+        l = conn.execute("SELECT timestamp, username, action, cost, status, task_id FROM logs ORDER BY id DESC LIMIT 100").fetchall()
         conn.close()
         return render_template_string(MODERN_DASHBOARD_HTML, page='logs', logs=l)
-    except Exception as e: return f"DB Error: {e}", 500
+    except Exception as e: 
+        return f"DB Error: {e}", 500
 
 @app.route('/settings')
 @login_required
@@ -677,75 +738,106 @@ def add_user():
         conn = get_db()
         conn.execute("INSERT INTO users (username, api_key, credits, expiry_date, is_active, created_at, plan, assigned_api_key) VALUES (?, ?, ?, ?, 1, ?, ?, ?)", 
                      (request.form['username'], "SK-"+str(uuid.uuid4())[:12].upper(), int(request.form['credits']), request.form['expiry'], datetime.now().strftime("%Y-%m-%d"), request.form['plan'], assigned_key))
-        conn.commit(); conn.close()
-    except Exception as e: print(e)
+        conn.commit()
+        conn.close()
+    except Exception as e: 
+        print(e)
     return redirect('/dashboard')
 
 @app.route('/update_user_full', methods=['POST'])
 @login_required
 def update_user_full():
-    u = request.form['username']; plan = request.form.get('plan')
+    u = request.form['username']
+    plan = request.form.get('plan')
     credit_adj = request.form.get('credit_adj')
     cl = request.form.get('custom_limit') or None
     c2 = request.form.get('custom_cost_2') or None
     cp = request.form.get('custom_cost_pro') or None
     ak = request.form.get('assigned_key') or None
     conn = get_db()
-    conn.execute('''UPDATE users SET plan=?, custom_limit=?, custom_cost_2=?, custom_cost_pro=?, assigned_api_key=? WHERE username=?''', (plan, cl, c2, cp, ak, u))
+    conn.execute('''UPDATE users SET plan=?, custom_limit=?, custom_cost_2=?, custom_cost_pro=?, assigned_api_key=? WHERE username=?''', 
+                 (plan, cl, c2, cp, ak, u))
     if credit_adj:
-        try: conn.execute("UPDATE users SET credits = credits + ? WHERE username=?", (int(credit_adj), u))
-        except: pass
-    conn.commit(); conn.close()
+        try: 
+            conn.execute("UPDATE users SET credits = credits + ? WHERE username=?", (int(credit_adj), u))
+        except: 
+            pass
+    conn.commit()
+    conn.close()
     return redirect('/dashboard')
 
 @app.route('/add_api_key', methods=['POST'])
 @login_required
 def add_api_key():
     try:
-        conn = get_db(); conn.execute("INSERT INTO api_keys (key_value, label) VALUES (?, ?)", (request.form['key_value'], request.form['label'])); conn.commit(); conn.close()
-    except: pass
+        conn = get_db()
+        conn.execute("INSERT INTO api_keys (key_value, label) VALUES (?, ?)", 
+                    (request.form['key_value'], request.form['label']))
+        conn.commit()
+        conn.close()
+    except: 
+        pass
     return redirect('/api_keys')
 
 @app.route('/delete_key/<path:k>')
 @login_required
 def delete_key(k):
-    conn = get_db(); conn.execute("DELETE FROM api_keys WHERE key_value=?", (k,)); conn.commit(); conn.close()
+    conn = get_db()
+    conn.execute("DELETE FROM api_keys WHERE key_value=?", (k,))
+    conn.commit()
+    conn.close()
     return redirect('/api_keys')
 
 @app.route('/toggle_status/<username>/<int:status>')
 @login_required
 def toggle_status(username, status):
-    conn = get_db(); conn.execute("UPDATE users SET is_active = ? WHERE username=?", (status, username)); conn.commit(); conn.close()
+    conn = get_db()
+    conn.execute("UPDATE users SET is_active = ? WHERE username=?", (status, username))
+    conn.commit()
+    conn.close()
     return redirect('/dashboard')
 
 @app.route('/delete_user/<username>')
 @login_required
 def delete_user(username):
-    conn = get_db(); conn.execute("DELETE FROM users WHERE username=?", (username,)); conn.commit(); conn.close()
+    conn = get_db()
+    conn.execute("DELETE FROM users WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
     return redirect('/dashboard')
 
 @app.route('/generate_vouchers', methods=['POST'])
 @login_required
 def generate_vouchers():
-    amt = int(request.form['amount']); qty = int(request.form['count'])
-    max_uses = int(request.form.get('max_uses', 1)); expiry = request.form.get('expiry') or None
+    amt = int(request.form['amount'])
+    qty = int(request.form['count'])
+    max_uses = int(request.form.get('max_uses', 1))
+    expiry = request.form.get('expiry') or None
     conn = get_db()
-    for _ in range(qty): conn.execute("INSERT INTO vouchers (code, amount, max_uses, expiry_date, created_at) VALUES (?, ?, ?, ?, ?)", (generate_voucher_code(amt), amt, max_uses, expiry, str(datetime.now())))
-    conn.commit(); conn.close()
+    for _ in range(qty): 
+        conn.execute("INSERT INTO vouchers (code, amount, max_uses, expiry_date, created_at) VALUES (?, ?, ?, ?, ?)", 
+                    (generate_voucher_code(amt), amt, max_uses, expiry, str(datetime.now())))
+    conn.commit()
+    conn.close()
     return redirect('/vouchers')
 
 @app.route('/delete_voucher/<code>')
 @login_required
 def delete_voucher(code):
-    conn = get_db(); conn.execute("DELETE FROM vouchers WHERE code=?", (code,)); conn.commit(); conn.close()
+    conn = get_db()
+    conn.execute("DELETE FROM vouchers WHERE code=?", (code,))
+    conn.commit()
+    conn.close()
     return redirect('/vouchers')
 
 @app.route('/update_settings', methods=['POST'])
 @login_required
 def update_settings():
     form = request.form
-    if 'update_is_live' not in form: set_setting('update_is_live', '0')
-    for k in form: set_setting(k, form[k])
+    if 'update_is_live' not in form: 
+        set_setting('update_is_live', '0')
+    for k in form: 
+        set_setting(k, form[k])
     return redirect('/settings')
 
 @app.route('/update_broadcast', methods=['POST'])
@@ -758,7 +850,8 @@ def update_broadcast():
 @app.route('/clear_broadcast')
 @login_required
 def clear_broadcast():
-    set_setting('broadcast_msg', ''); return redirect('/settings')
+    set_setting('broadcast_msg', '')
+    return redirect('/settings')
 
 # --- API ---
 @app.route('/api/verify', methods=['POST'])
@@ -767,11 +860,26 @@ def verify_user():
     conn = get_db()
     u = conn.execute("SELECT credits, expiry_date, is_active, plan, custom_limit, custom_cost_2, custom_cost_pro FROM users WHERE username=? AND api_key=?", 
                      (d.get('username'), d.get('api_key'))).fetchone()
-    if not u: conn.close(); return jsonify({"valid": False, "message": "Invalid Credentials"})
-    if u['is_active'] == 0: conn.close(); return jsonify({"valid": False, "message": "Banned"})
-    if u['is_active'] == 2: conn.close(); return jsonify({"valid": False, "message": "Suspended"})
-    if datetime.now() > datetime.strptime(u['expiry_date'], "%Y-%m-%d"): conn.close(); return jsonify({"valid": False, "message": "Expired"})
-    conn.execute("UPDATE users SET last_seen = ? WHERE username=?", (str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")), d.get('username'))); conn.commit()
+    if not u: 
+        conn.close()
+        return jsonify({"valid": False, "message": "Invalid Credentials"})
+    
+    if u['is_active'] == 0: 
+        conn.close()
+        return jsonify({"valid": False, "message": "Banned"})
+    
+    if u['is_active'] == 2: 
+        conn.close()
+        return jsonify({"valid": False, "message": "Suspended"})
+    
+    if datetime.now() > datetime.strptime(u['expiry_date'], "%Y-%m-%d"): 
+        conn.close()
+        return jsonify({"valid": False, "message": "Expired"})
+    
+    conn.execute("UPDATE users SET last_seen = ? WHERE username=?", 
+                 (str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")), d.get('username')))
+    conn.commit()
+    
     limit = u['custom_limit'] if u['custom_limit'] else int(get_setting(f"limit_{u['plan'].lower()}", 3))
     
     # យកតម្លៃ Custom Costs ពី user record ឬតម្លៃ default
@@ -779,10 +887,17 @@ def verify_user():
     custom_cost_pro = u['custom_cost_pro'] if u['custom_cost_pro'] is not None else int(get_setting('cost_sora_2_pro', 35))
     
     return jsonify({
-        "valid": True, "credits": u['credits'], "expiry": u['expiry_date'], "plan": u['plan'], "concurrency_limit": limit,
-        "broadcast": get_setting('broadcast_msg', ''), "broadcast_color": get_setting('broadcast_color', '#FF0000'),
-        "latest_version": get_setting('latest_version', '1.0.0'), "update_desc": get_setting('update_desc', ''), 
-        "update_is_live": get_setting('update_is_live', '0') == '1', "download_url": get_setting('update_url', ''),
+        "valid": True, 
+        "credits": u['credits'], 
+        "expiry": u['expiry_date'], 
+        "plan": u['plan'], 
+        "concurrency_limit": limit,
+        "broadcast": get_setting('broadcast_msg', ''), 
+        "broadcast_color": get_setting('broadcast_color', '#FF0000'),
+        "latest_version": get_setting('latest_version', '1.0.0'), 
+        "update_desc": get_setting('update_desc', ''), 
+        "update_is_live": get_setting('update_is_live', '0') == '1', 
+        "download_url": get_setting('update_url', ''),
         # បន្ថែមតម្លៃ Custom Costs
         "custom_cost_2": custom_cost_2,
         "custom_cost_pro": custom_cost_pro,
@@ -794,76 +909,171 @@ def verify_user():
 @app.route('/api/heartbeat', methods=['POST'])
 def heartbeat():
     d = request.json
-    u = d.get('username'); k = d.get('api_key')
+    u = d.get('username')
+    k = d.get('api_key')
     if u and k:
-        conn = get_db(); conn.execute("UPDATE users SET session_minutes = session_minutes + 1 WHERE username=? AND api_key=?", (u, k)); conn.commit(); conn.close()
+        conn = get_db()
+        conn.execute("UPDATE users SET session_minutes = session_minutes + 1 WHERE username=? AND api_key=?", (u, k))
+        conn.commit()
+        conn.close()
     return jsonify({"status": "ok"})
 
 @app.route('/api/redeem', methods=['POST'])
 def redeem():
     d = request.json
-    code = d.get('code'); username = d.get('username')
+    code = d.get('code')
+    username = d.get('username')
     conn = get_db()
     v = conn.execute("SELECT amount, max_uses, current_uses, expiry_date FROM vouchers WHERE code=?", (code,)).fetchone()
-    if not v: conn.close(); return jsonify({"success": False, "message": "Invalid Code"})
-    if v['current_uses'] >= v['max_uses']: conn.close(); return jsonify({"success": False, "message": "Fully Used"})
-    if v['expiry_date'] and datetime.now() > datetime.strptime(v['expiry_date'], "%Y-%m-%d"): conn.close(); return jsonify({"success": False, "message": "Expired"})
-    if conn.execute("SELECT 1 FROM voucher_usage WHERE code=? AND username=?", (code, username)).fetchone(): conn.close(); return jsonify({"success": False, "message": "Already Redeemed"})
+    if not v: 
+        conn.close()
+        return jsonify({"success": False, "message": "Invalid Code"})
+    
+    if v['current_uses'] >= v['max_uses']: 
+        conn.close()
+        return jsonify({"success": False, "message": "Fully Used"})
+    
+    if v['expiry_date'] and datetime.now() > datetime.strptime(v['expiry_date'], "%Y-%m-%d"): 
+        conn.close()
+        return jsonify({"success": False, "message": "Expired"})
+    
+    if conn.execute("SELECT 1 FROM voucher_usage WHERE code=? AND username=?", (code, username)).fetchone(): 
+        conn.close()
+        return jsonify({"success": False, "message": "Already Redeemed"})
+    
     conn.execute("UPDATE users SET credits=credits+? WHERE username=?", (v['amount'], username))
     conn.execute("UPDATE vouchers SET current_uses=current_uses+1 WHERE code=?", (code,))
     conn.execute("INSERT INTO voucher_usage (code, username, used_at) VALUES (?, ?, ?)", (code, username, str(datetime.now())))
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
     return jsonify({"success": True, "message": f"Added {v['amount']} Credits"})
 
 @app.route('/api/proxy/generate', methods=['POST'])
 def proxy_gen():
-    auth = request.headers.get("Client-Auth", ""); 
-    if ":" not in auth: return jsonify({"code":-1}), 401
+    auth = request.headers.get("Client-Auth", "")
+    if ":" not in auth: 
+        return jsonify({"code":-1}), 401
+    
     u_name, u_key = auth.split(":")
     conn = get_db()
     user = conn.execute("SELECT credits, is_active, custom_cost_2, custom_cost_pro FROM users WHERE username=? AND api_key=?", (u_name, u_key)).fetchone()
-    if not user or user['is_active'] != 1: conn.close(); return jsonify({"code":-1}), 403
-    model = request.json.get('model', ''); cost = user['custom_cost_pro'] if "pro" in model and user['custom_cost_pro'] else (user['custom_cost_2'] if user['custom_cost_2'] else int(get_setting('cost_sora_2_pro' if "pro" in model else 'cost_sora_2', 25)))
-    if user['credits'] < cost: conn.close(); return jsonify({"code":-1, "message": "Insufficient Credits"}), 402
+    
+    if not user or user['is_active'] != 1: 
+        conn.close()
+        return jsonify({"code":-1}), 403
+    
+    model = request.json.get('model', '')
+    
+    # Determine cost based on custom costs or default
+    if "pro" in model and user['custom_cost_pro']:
+        cost = user['custom_cost_pro']
+    elif user['custom_cost_2']:
+        cost = user['custom_cost_2']
+    else:
+        cost = int(get_setting('cost_sora_2_pro' if "pro" in model else 'cost_sora_2', 25))
+    
+    if user['credits'] < cost: 
+        conn.close()
+        return jsonify({"code":-1, "message": "Insufficient Credits"}), 402
+    
     real_key = get_active_api_key(u_name)
-    if not real_key: conn.close(); return jsonify({"code":-1, "message": "System Busy"}), 503
+    if not real_key: 
+        conn.close()
+        return jsonify({"code":-1, "message": "System Busy"}), 503
+    
     try:
-        r = requests.post("https://FreeSoraGenerator.com/api/v1/video/sora-video", json=request.json, headers={"Authorization": f"Bearer {real_key}"}, timeout=120)
+        r = requests.post("https://FreeSoraGenerator.com/api/v1/video/sora-video", 
+                         json=request.json, 
+                         headers={"Authorization": f"Bearer {real_key}"}, 
+                         timeout=120)
+        
         if r.json().get("code") == 0:
             tid = r.json().get('data', {}).get('taskId')
-            if tid: conn.execute("INSERT INTO tasks (task_id, username, cost, status, created_at, model) VALUES (?, ?, ?, ?, ?, ?)", (tid, u_name, cost, 'pending', str(datetime.now()), model))
+            if tid: 
+                conn.execute("INSERT INTO tasks (task_id, username, cost, status, created_at, model) VALUES (?, ?, ?, ?, ?, ?)", 
+                           (tid, u_name, cost, 'pending', str(datetime.now()), model))
+            
+            # Deduct credits immediately
             conn.execute("UPDATE users SET credits=credits-? WHERE username=?", (cost, u_name))
-            conn.execute("INSERT INTO logs (username, action, cost, timestamp, status) VALUES (?, ?, ?, ?, ?)", (u_name, "generate", cost, str(datetime.now()), 'Success'))
+            
+            # Log the generation
+            conn.execute("INSERT INTO logs (username, action, cost, timestamp, status, task_id) VALUES (?, ?, ?, ?, ?, ?)", 
+                        (u_name, "generate", cost, str(datetime.now()), 'Pending', tid))
+            
             conn.commit()
-            r_json = r.json(); r_json['user_balance'] = user['credits'] - cost
+            
+            r_json = r.json()
+            r_json['user_balance'] = user['credits'] - cost
             return jsonify(r_json), r.status_code
+        
         return jsonify(r.json()), r.status_code
-    except Exception as e: return jsonify({"code":-1, "message": str(e)}), 500
-    finally: conn.close()
+    
+    except Exception as e: 
+        return jsonify({"code":-1, "message": str(e)}), 500
+    
+    finally: 
+        conn.close()
 
 @app.route('/api/proxy/check-result', methods=['POST'])
 def proxy_chk():
     try:
         real_key = get_active_api_key()
-        r = requests.post("https://FreeSoraGenerator.com/api/video-generations/check-result", json=request.json, headers={"Authorization": f"Bearer {real_key}"}, timeout=30)
-        data = r.json(); task_id = request.json.get('taskId')
-        conn = get_db(); task = conn.execute("SELECT username, cost, status FROM tasks WHERE task_id=?", (task_id,)).fetchone()
+        r = requests.post("https://FreeSoraGenerator.com/api/video-generations/check-result", 
+                         json=request.json, 
+                         headers={"Authorization": f"Bearer {real_key}"}, 
+                         timeout=30)
+        
+        data = r.json()
+        task_id = request.json.get('taskId')
+        
+        conn = get_db()
+        task = conn.execute("SELECT username, cost, status FROM tasks WHERE task_id=?", (task_id,)).fetchone()
+        
         if task:
-            if data.get('data', {}).get('status') == 'failed' and task['status'] != 'refunded':
-                conn.execute("UPDATE users SET credits = credits + ? WHERE username = ?", (task['cost'], task['username']))
+            status = data.get('data', {}).get('status')
+            
+            # If task failed and not already refunded, refund credits
+            if status == 'failed' and task['status'] != 'refunded':
+                conn.execute("UPDATE users SET credits = credits + ? WHERE username = ?", 
+                           (task['cost'], task['username']))
+                
                 conn.execute("UPDATE tasks SET status = 'refunded' WHERE task_id = ?", (task_id,))
-                conn.execute("INSERT INTO logs (username, action, cost, timestamp, status) VALUES (?, ?, ?, ?, ?)", (task['username'], f"Refund {task_id}", 0, str(datetime.now()), 'Refund'))
-                stats = json.loads(conn.execute("SELECT daily_stats FROM users WHERE username=?", (task['username'],)).fetchone()[0])
-                stats['fail'] = stats.get('fail', 0) + 1
-                conn.execute("UPDATE users SET daily_stats=? WHERE username=?", (json.dumps(stats), task['username'])); conn.commit()
-            elif data.get('data', {}).get('status') == 'succeeded' and task['status'] != 'succeeded':
+                
+                conn.execute("INSERT INTO logs (username, action, cost, timestamp, status, task_id) VALUES (?, ?, ?, ?, ?, ?)", 
+                           (task['username'], f"Refund {task_id}", task['cost'], str(datetime.now()), 'Refunded', task_id))
+                
+                # Update daily stats
+                user_row = conn.execute("SELECT daily_stats FROM users WHERE username=?", (task['username'],)).fetchone()
+                if user_row and user_row[0]:
+                    stats = json.loads(user_row[0])
+                    stats['fail'] = stats.get('fail', 0) + 1
+                    stats['refunds'] = stats.get('refunds', 0) + 1
+                    conn.execute("UPDATE users SET daily_stats=? WHERE username=?", (json.dumps(stats), task['username']))
+                
+                conn.commit()
+                
+            # If task succeeded, update status
+            elif status == 'succeeded' and task['status'] != 'succeeded':
                 conn.execute("UPDATE tasks SET status = 'succeeded' WHERE task_id = ?", (task_id,))
-                stats = json.loads(conn.execute("SELECT daily_stats FROM users WHERE username=?", (task['username'],)).fetchone()[0])
-                stats['success'] = stats.get('success', 0) + 1
-                conn.execute("UPDATE users SET daily_stats=? WHERE username=?", (json.dumps(stats), task['username'])); conn.commit()
+                
+                conn.execute("INSERT INTO logs (username, action, cost, timestamp, status, task_id) VALUES (?, ?, ?, ?, ?, ?)", 
+                           (task['username'], f"Success {task_id}", task['cost'], str(datetime.now()), 'Success', task_id))
+                
+                # Update daily stats
+                user_row = conn.execute("SELECT daily_stats FROM users WHERE username=?", (task['username'],)).fetchone()
+                if user_row and user_row[0]:
+                    stats = json.loads(user_row[0])
+                    stats['success'] = stats.get('success', 0) + 1
+                    conn.execute("UPDATE users SET daily_stats=? WHERE username=?", (json.dumps(stats), task['username']))
+                
+                conn.commit()
+        
         conn.close()
         return jsonify(data), r.status_code
-    except: return jsonify({"code":-1}), 500
+    
+    except Exception as e:
+        print(f"Error in proxy_chk: {e}")
+        return jsonify({"code":-1}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
