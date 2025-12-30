@@ -856,10 +856,10 @@ def update_settings():
     form = request.form
     
     # កំណត់តម្លៃសម្រាប់ 'update_is_live' (checkbox)
-    # ប្រសិនបើ checkbox ត្រូវបានជ្រើសរើស វានឹងមាននៅក្នុង form
-    # បើមិនមានទេ កំណត់ជា '0'
     if 'update_is_live' in form:
         set_setting('update_is_live', '1')
+        # កំណត់ update timestamp ថ្មី
+        set_setting('update_timestamp', datetime.now().isoformat())
     else:
         set_setting('update_is_live', '0')
     
@@ -869,6 +869,13 @@ def update_settings():
     for key in keys_to_save:
         if key in form:
             set_setting(key, form[key])
+    
+    # បង្កើត log សម្រាប់ការអាប់ដេត
+    conn = get_db()
+    conn.execute("INSERT INTO logs (username, action, cost, timestamp, status) VALUES (?, ?, ?, ?, ?)", 
+                 ('SYSTEM', f'UPDATE_PUSH: v{form.get("latest_version", "")} enabled', 0, str(datetime.now()), 'Update'))
+    conn.commit()
+    conn.close()
     
     return redirect('/settings')
 
@@ -936,6 +943,17 @@ def verify_user():
         # រក្សាទុកតម្លៃ default ផងដែរ
         "default_cost_sora_2": int(get_setting('cost_sora_2', 25)),
         "default_cost_sora_2_pro": int(get_setting('cost_sora_2_pro', 35))
+    })
+    
+@app.route('/api/check-update-status', methods=['GET'])
+def check_update_status():
+    """API សម្រាប់ client ពិនិត្យស្ថានភាពអាប់ដេតថ្មី"""
+    return jsonify({
+        "latest_version": get_setting('latest_version', '1.0.0'),
+        "update_is_live": get_setting('update_is_live', '0') == '1',
+        "update_desc": get_setting('update_desc', ''),
+        "download_url": get_setting('update_url', ''),
+        "timestamp": datetime.now().isoformat()
     })
 
 @app.route('/api/heartbeat', methods=['POST'])
@@ -1119,5 +1137,6 @@ def proxy_chk():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+
 
 
