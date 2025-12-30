@@ -474,7 +474,10 @@ MODERN_DASHBOARD_HTML = """
                     <form action="/update_settings" method="POST" class="space-y-4">
                         <div class="flex items-center justify-between bg-white/10 p-4 rounded-lg border border-white/20">
                             <div><h5 class="font-bold">Enable Update Push</h5><p class="text-xs opacity-70">Client will auto-download and extract ZIP.</p></div>
-                            <label class="switch"><input type="checkbox" name="update_is_live" {% if update_is_live == '1' %}checked{% endif %}><span class="slider"></span></label>
+                            <label class="switch">
+                                <input type="checkbox" name="update_is_live" value="1" {% if update_is_live == '1' %}checked{% endif %}>
+                                <span class="slider"></span>
+                            </label>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div><label class="text-xs opacity-70 block mb-1">Latest Version</label><input type="text" name="latest_version" value="{{ latest_version }}" class="w-full bg-white/20 border border-white/30 rounded px-3 py-2 backdrop-blur outline-none"></div>
@@ -851,10 +854,22 @@ def delete_voucher(code):
 @login_required
 def update_settings():
     form = request.form
-    if 'update_is_live' not in form: 
+    
+    # កំណត់តម្លៃសម្រាប់ 'update_is_live' (checkbox)
+    # ប្រសិនបើ checkbox ត្រូវបានជ្រើសរើស វានឹងមាននៅក្នុង form
+    # បើមិនមានទេ កំណត់ជា '0'
+    if 'update_is_live' in form:
+        set_setting('update_is_live', '1')
+    else:
         set_setting('update_is_live', '0')
-    for k in form: 
-        set_setting(k, form[k])
+    
+    # រក្សាទុកការកំណត់ផ្សេងៗទៀត
+    keys_to_save = ['latest_version', 'update_desc', 'update_url', 
+                    'cost_sora_2', 'cost_sora_2_pro']
+    for key in keys_to_save:
+        if key in form:
+            set_setting(key, form[key])
+    
     return redirect('/settings')
 
 @app.route('/update_broadcast', methods=['POST'])
@@ -1104,4 +1119,5 @@ def proxy_chk():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+
 
