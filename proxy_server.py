@@ -1071,10 +1071,19 @@ def proxy_gen():
 def proxy_chk():
     try:
         real_key = get_active_api_key()
+
+        # ⬇️ បន្ថែម logging
+        print(f"[DEBUG] Checking result with taskId: {request.json.get('taskId')}")
+        print(f"[DEBUG] Using API key: {real_key[:15]}...")
+        
         r = requests.post("https://FreeSoraGenerator.com/api/video-generations/check-result", 
                          json=request.json, 
                          headers={"Authorization": f"Bearer {real_key}"}, 
                          timeout=60)
+
+        # ⬇️ Log response
+        print(f"[DEBUG] Response status: {r.status_code}")
+        print(f"[DEBUG] Response: {r.text[:500]}")  # បង្ហាញតែ 500 តួដំបូង
         
         data = r.json()
         task_id = request.json.get('taskId')
@@ -1137,6 +1146,7 @@ def proxy_chk():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+
 
 
 
