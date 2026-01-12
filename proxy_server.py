@@ -1032,36 +1032,72 @@ def proxy_gen():
         return jsonify({"code":-1, "message": "System Busy"}), 503
     
     try:
-        r = requests.post("https://FreeSoraGenerator.com/api/v1/video/sora-video", 
+        # ✅ កែប្រែ៖ ប្រើ endpoint ត្រឹមត្រូវតាម model
+        if "pro" in model:
+            api_endpoint = "https://freesoragenerator.com/api/v1/video/sora-pro"
+        else:
+            api_endpoint = "https://freesoragenerator.com/api/v1/video/sora-2"
+        
+        r = requests.post(api_endpoint, 
                          json=request.json, 
-                         headers={"Authorization": f"Bearer {real_key}"}, 
+                         headers={
+                             "Authorization": f"Bearer {real_key}",
+                             "Content-Type": "application/json",
+                             "User-Agent": "SoraAdmin/1.0"
+                         }, 
                          timeout=120)
         
-        if r.json().get("code") == 0:
-            data = r.json().get('data', {})
-            tid = data.get('taskId') or data.get('task_id') or data.get('id')
-            
-            if tid: 
-                conn.execute("INSERT INTO tasks (task_id, username, cost, status, created_at, model) VALUES (?, ?, ?, ?, ?, ?)", 
-                           (tid, u_name, cost, 'pending', str(datetime.now()), model))
-            
-            # Deduct credits immediately
-            conn.execute("UPDATE users SET credits=credits-? WHERE username=?", (cost, u_name))
-            
-            # Log the generation with task_id
-            conn.execute("INSERT INTO logs (username, action, cost, timestamp, status, task_id) VALUES (?, ?, ?, ?, ?, ?)", 
-                        (u_name, "generate", cost, str(datetime.now()), 'Pending', tid or ''))
-            
-            conn.commit()
-            
-            r_json = r.json()
-            r_json['user_balance'] = user['credits'] - cost
-            return jsonify(r_json), r.status_code
+        print(f"[DEBUG] API Call to: {api_endpoint}")
+        print(f"[DEBUG] Request body: {request.json}")
+        print(f"[DEBUG] Response status: {r.status_code}")
+        print(f"[DEBUG] Response: {r.text[:500]}")
         
-        return jsonify(r.json()), r.status_code
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("code") == 0:
+                task_data = data.get('data', {})
+                tid = task_data.get('taskId') or task_data.get('task_id') or task_data.get('id')
+                
+                if tid: 
+                    conn.execute("INSERT INTO tasks (task_id, username, cost, status, created_at, model) VALUES (?, ?, ?, ?, ?, ?)", 
+                               (tid, u_name, cost, 'pending', str(datetime.now()), model))
+                
+                # Deduct credits immediately
+                conn.execute("UPDATE users SET credits=credits-? WHERE username=?", (cost, u_name))
+                
+                # Log the generation with task_id
+                conn.execute("INSERT INTO logs (username, action, cost, timestamp, status, task_id) VALUES (?, ?, ?, ?, ?, ?)", 
+                            (u_name, "generate", cost, str(datetime.now()), 'Pending', tid or ''))
+                
+                conn.commit()
+                
+                response_data = {
+                    "code": 0,
+                    "message": "ok",
+                    "data": {
+                        "taskId": tid
+                    },
+                    "user_balance": user['credits'] - cost
+                }
+                return jsonify(response_data), 200
+            
+            else:
+                # If API returns error, refund credits
+                conn.execute("UPDATE users SET credits=credits+? WHERE username=?", (cost, u_name))
+                conn.commit()
+                return jsonify({
+                    "code": -1,
+                    "message": data.get('message', 'API Error')
+                }), 400
+        
+        return jsonify({"code":-1, "message": f"API Error: {r.status_code}"}), r.status_code
     
+    except requests.exceptions.Timeout:
+        print(f"[ERROR] Request timeout for user: {u_name}")
+        return jsonify({"code":-1, "message": "Request timeout"}), 504
+        
     except Exception as e: 
-        print(f"Error in proxy_gen: {e}")
+        print(f"[ERROR] in proxy_gen: {e}")
         return jsonify({"code":-1, "message": str(e)}), 500
     
     finally: 
@@ -1071,22 +1107,25 @@ def proxy_gen():
 def proxy_chk():
     try:
         real_key = get_active_api_key()
+        task_id = request.json.get('taskId')
 
-        # ⬇️ បន្ថែម logging
-        print(f"[DEBUG] Checking result with taskId: {request.json.get('taskId')}")
-        print(f"[DEBUG] Using API key: {real_key[:15]}...")
+        if not task_id:
+            return jsonify({"code": -1, "message": "Missing taskId"}), 400
+
+        print(f"[DEBUG] Checking result for taskId: {task_id}")
         
-        r = requests.post("https://FreeSoraGenerator.com/api/video-generations/check-result", 
-                         json=request.json, 
-                         headers={"Authorization": f"Bearer {real_key}"}, 
+        r = requests.post("https://freesoragenerator.com/api/video-generations/check-result", 
+                         json={"taskId": task_id}, 
+                         headers={
+                             "Authorization": f"Bearer {real_key}",
+                             "Content-Type": "application/json"
+                         }, 
                          timeout=60)
 
-        # ⬇️ Log response
-        print(f"[DEBUG] Response status: {r.status_code}")
-        print(f"[DEBUG] Response: {r.text[:500]}")  # បង្ហាញតែ 500 តួដំបូង
-        
+        print(f"[DEBUG] Check result response: {r.status_code}")
+        print(f"[DEBUG] Response data: {r.text[:500]}")
+
         data = r.json()
-        task_id = request.json.get('taskId')
         
         conn = get_db()
         task = conn.execute("SELECT username, cost, status FROM tasks WHERE task_id=?", (task_id,)).fetchone()
@@ -1105,16 +1144,11 @@ def proxy_chk():
                 conn.execute("INSERT INTO logs (username, action, cost, timestamp, status, task_id) VALUES (?, ?, ?, ?, ?, ?)", 
                            (task['username'], f"Refund {task_id}", task['cost'], str(datetime.now()), 'Refunded', task_id))
                 
-                # Update daily stats
-                user_row = conn.execute("SELECT daily_stats FROM users WHERE username=?", (task['username'],)).fetchone()
-                if user_row and user_row[0]:
-                    try:
-                        stats = json.loads(user_row[0])
-                        stats['fail'] = stats.get('fail', 0) + 1
-                        stats['refunds'] = stats.get('refunds', 0) + 1
-                        conn.execute("UPDATE users SET daily_stats=? WHERE username=?", (json.dumps(stats), task['username']))
-                    except:
-                        pass
+                # Update response to indicate refund
+                if 'data' in data:
+                    data['data']['credits_refunded'] = True
+                else:
+                    data['data'] = {'credits_refunded': True}
                 
                 conn.commit()
                 
@@ -1125,29 +1159,15 @@ def proxy_chk():
                 conn.execute("INSERT INTO logs (username, action, cost, timestamp, status, task_id) VALUES (?, ?, ?, ?, ?, ?)", 
                            (task['username'], f"Success {task_id}", task['cost'], str(datetime.now()), 'Success', task_id))
                 
-                # Update daily stats
-                user_row = conn.execute("SELECT daily_stats FROM users WHERE username=?", (task['username'],)).fetchone()
-                if user_row and user_row[0]:
-                    try:
-                        stats = json.loads(user_row[0])
-                        stats['success'] = stats.get('success', 0) + 1
-                        conn.execute("UPDATE users SET daily_stats=? WHERE username=?", (json.dumps(stats), task['username']))
-                    except:
-                        pass
-                
                 conn.commit()
         
         conn.close()
         return jsonify(data), r.status_code
     
     except Exception as e:
-        print(f"Error in proxy_chk: {e}")
-        return jsonify({"code":-1}), 500
+        print(f"[ERROR] in proxy_chk: {e}")
+        return jsonify({"code":-1, "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
-
-
-
-
 
