@@ -1012,15 +1012,16 @@ def proxy_gen():
         conn.close()
         return jsonify({"code":-1}), 403
     
-    model = request.json.get('model', '')
+    client_data = request.json
+    client_model = client_data.get('model', '')
     
     # Determine cost based on custom costs or default
-    if "pro" in model and user['custom_cost_pro']:
+    if "pro" in client_model and user['custom_cost_pro']:
         cost = user['custom_cost_pro']
     elif user['custom_cost_2']:
         cost = user['custom_cost_2']
     else:
-        cost = int(get_setting('cost_sora_2_pro' if "pro" in model else 'cost_sora_2', 25))
+        cost = int(get_setting('cost_sora_2_pro' if "pro" in client_model else 'cost_sora_2', 25))
     
     if user['credits'] < cost: 
         conn.close()
@@ -1032,35 +1033,67 @@ def proxy_gen():
         return jsonify({"code":-1, "message": "System Busy"}), 503
     
     try:
-        # ✅ កែប្រែ៖ ប្រើ endpoint ត្រឹមត្រូវតាម model
-        if "pro" in model:
-            api_endpoint = "https://freesoragenerator.com/api/v1/video/sora-pro"
+        # ✅ បម្លែង model ពី client ទៅកាន់ API model
+        model_map = {
+            "sora-2": "sora-2-text-to-video",
+            "sora-2-pro": "sora-2-pro-text-to-video"
+        }
+        
+        api_model = model_map.get(client_model, "sora-2-text-to-video")
+        
+        # ✅ បម្លែង aspect ratio
+        aspect_ratio = client_data.get('aspectRatio', '16:9')
+        if aspect_ratio == '9:16':
+            api_aspect_ratio = 'portrait'
         else:
-            api_endpoint = "https://freesoragenerator.com/api/v1/video/sora-2"
+            api_aspect_ratio = 'landscape'
+        
+        # ✅ បង្កើត payload សម្រាប់ API
+        api_payload = {
+            "model": api_model,
+            "prompt": client_data.get('prompt', ''),
+            "aspectRatio": api_aspect_ratio,
+            "removeWatermark": True
+        }
+        
+        # ✅ បន្ថែម nFrames និង size សម្រាប់ Pro model
+        if "pro" in client_model:
+            api_payload["nFrames"] = "15"  # Default for Pro
+            api_payload["size"] = "high"   # Default high quality
+        else:
+            api_payload["nFrames"] = "10"  # Default for non-Pro
+        
+        api_endpoint = "https://freesoragenerator.com/api/v1/video/sora-pro"
+        
+        print(f"[DEBUG] API Call to: {api_endpoint}")
+        print(f"[DEBUG] API Model: {api_model}")
+        print(f"[DEBUG] API Payload: {api_payload}")
+        print(f"[DEBUG] Using API Key: {real_key[:15]}...")
         
         r = requests.post(api_endpoint, 
-                         json=request.json, 
+                         json=api_payload, 
                          headers={
                              "Authorization": f"Bearer {real_key}",
                              "Content-Type": "application/json",
-                             "User-Agent": "SoraAdmin/1.0"
+                             "User-Agent": "Mozilla/5.0"
                          }, 
                          timeout=120)
         
-        print(f"[DEBUG] API Call to: {api_endpoint}")
-        print(f"[DEBUG] Request body: {request.json}")
         print(f"[DEBUG] Response status: {r.status_code}")
         print(f"[DEBUG] Response: {r.text[:500]}")
         
         if r.status_code == 200:
             data = r.json()
+            
             if data.get("code") == 0:
                 task_data = data.get('data', {})
-                tid = task_data.get('taskId') or task_data.get('task_id') or task_data.get('id')
+                tid = task_data.get('taskId')
+                
+                print(f"[DEBUG] Task ID received: {tid}")
                 
                 if tid: 
                     conn.execute("INSERT INTO tasks (task_id, username, cost, status, created_at, model) VALUES (?, ?, ?, ?, ?, ?)", 
-                               (tid, u_name, cost, 'pending', str(datetime.now()), model))
+                               (tid, u_name, cost, 'pending', str(datetime.now()), client_model))
                 
                 # Deduct credits immediately
                 conn.execute("UPDATE users SET credits=credits-? WHERE username=?", (cost, u_name))
@@ -1071,6 +1104,7 @@ def proxy_gen():
                 
                 conn.commit()
                 
+                # Return response in expected format
                 response_data = {
                     "code": 0,
                     "message": "ok",
@@ -1080,16 +1114,19 @@ def proxy_gen():
                     "user_balance": user['credits'] - cost
                 }
                 return jsonify(response_data), 200
-            
             else:
                 # If API returns error, refund credits
                 conn.execute("UPDATE users SET credits=credits+? WHERE username=?", (cost, u_name))
                 conn.commit()
+                error_msg = data.get('message', 'API Error')
+                print(f"[ERROR] API returned error: {error_msg}")
                 return jsonify({
                     "code": -1,
-                    "message": data.get('message', 'API Error')
+                    "message": error_msg
                 }), 400
         
+        # Handle other status codes
+        print(f"[ERROR] API returned status {r.status_code}: {r.text}")
         return jsonify({"code":-1, "message": f"API Error: {r.status_code}"}), r.status_code
     
     except requests.exceptions.Timeout:
@@ -1098,6 +1135,8 @@ def proxy_gen():
         
     except Exception as e: 
         print(f"[ERROR] in proxy_gen: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"code":-1, "message": str(e)}), 500
     
     finally: 
@@ -1113,7 +1152,9 @@ def proxy_chk():
             return jsonify({"code": -1, "message": "Missing taskId"}), 400
 
         print(f"[DEBUG] Checking result for taskId: {task_id}")
+        print(f"[DEBUG] Using API Key: {real_key[:15]}...")
         
+        # Call the actual API
         r = requests.post("https://freesoragenerator.com/api/video-generations/check-result", 
                          json={"taskId": task_id}, 
                          headers={
@@ -1125,17 +1166,25 @@ def proxy_chk():
         print(f"[DEBUG] Check result response: {r.status_code}")
         print(f"[DEBUG] Response data: {r.text[:500]}")
 
+        if r.status_code != 200:
+            return jsonify({
+                "code": -1,
+                "message": f"API Error: {r.status_code}"
+            }), r.status_code
+        
         data = r.json()
         
+        # Update our database based on task status
         conn = get_db()
         task = conn.execute("SELECT username, cost, status FROM tasks WHERE task_id=?", (task_id,)).fetchone()
         
         if task:
             data_info = data.get('data', {})
             status = data_info.get('status')
+            current_status = task['status']
             
             # If task failed and not already refunded, refund credits
-            if status == 'failed' and task['status'] != 'refunded':
+            if status == 'failed' and current_status != 'refunded':
                 conn.execute("UPDATE users SET credits = credits + ? WHERE username = ?", 
                            (task['cost'], task['username']))
                 
@@ -1144,7 +1193,7 @@ def proxy_chk():
                 conn.execute("INSERT INTO logs (username, action, cost, timestamp, status, task_id) VALUES (?, ?, ?, ?, ?, ?)", 
                            (task['username'], f"Refund {task_id}", task['cost'], str(datetime.now()), 'Refunded', task_id))
                 
-                # Update response to indicate refund
+                # Update the response to indicate refund
                 if 'data' in data:
                     data['data']['credits_refunded'] = True
                 else:
@@ -1153,7 +1202,7 @@ def proxy_chk():
                 conn.commit()
                 
             # If task succeeded, update status
-            elif status == 'succeeded' and task['status'] != 'succeeded':
+            elif status == 'succeeded' and current_status != 'succeeded':
                 conn.execute("UPDATE tasks SET status = 'succeeded' WHERE task_id = ?", (task_id,))
                 
                 conn.execute("INSERT INTO logs (username, action, cost, timestamp, status, task_id) VALUES (?, ?, ?, ?, ?, ?)", 
@@ -1162,7 +1211,7 @@ def proxy_chk():
                 conn.commit()
         
         conn.close()
-        return jsonify(data), r.status_code
+        return jsonify(data), 200
     
     except Exception as e:
         print(f"[ERROR] in proxy_chk: {e}")
@@ -1170,4 +1219,5 @@ def proxy_chk():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+
 
