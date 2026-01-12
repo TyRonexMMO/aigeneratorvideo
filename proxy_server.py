@@ -1036,7 +1036,7 @@ def proxy_gen():
         # ✅ បម្លែង model ពី client ទៅកាន់ API model
         model_map = {
             "sora-2": "sora-2-text-to-video",
-            "sora-2-pro": "sora-2-pro-text-to-video"
+            "sora-2-pro": "sora-2-text-to-video"
         }
         
         api_model = model_map.get(client_model, "sora-2-text-to-video")
@@ -1059,7 +1059,6 @@ def proxy_gen():
         # ✅ បន្ថែម nFrames និង size សម្រាប់ Pro model
         if "pro" in client_model:
             api_payload["nFrames"] = "15"  # Default for Pro
-            api_payload["size"] = "high"   # Default high quality
         else:
             api_payload["nFrames"] = "10"  # Default for non-Pro
         
@@ -1219,5 +1218,6 @@ def proxy_chk():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+
 
 
