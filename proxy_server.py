@@ -1074,7 +1074,7 @@ def proxy_chk():
         r = requests.post("https://FreeSoraGenerator.com/api/video-generations/check-result", 
                          json=request.json, 
                          headers={"Authorization": f"Bearer {real_key}"}, 
-                         timeout=30)
+                         timeout=60)
         
         data = r.json()
         task_id = request.json.get('taskId')
@@ -1137,6 +1137,7 @@ def proxy_chk():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+
 
 
 
