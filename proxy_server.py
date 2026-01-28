@@ -536,8 +536,36 @@ MODERN_DASHBOARD_HTML = """
                         <a id="btnBan" href="#" class="flex-1 py-2 text-center rounded bg-red-50 text-red-600 hover:bg-red-100 font-bold text-sm">Ban</a>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div><label class="block text-xs font-bold text-slate-500 mb-1">User Plan</label><select name="plan" id="modalPlan" class="w-full px-3 py-2 bg-slate-50 border rounded-lg"><option value="Mini">Mini</option><option value="Basic">Basic</option><option value="Standard">Standard</option><option value="Premium">Premium</option></select></div>
-                        <div><label class="block text-xs font-bold text-slate-500 mb-1">Add/Remove Credits</label><input type="number" name="credit_adj" placeholder="+/- Amount" class="w-full px-3 py-2 bg-slate-50 border rounded-lg"></div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 mb-1">User Plan</label>
+                            <select name="plan" id="modalPlan" class="w-full px-3 py-2 bg-slate-50 border rounded-lg">
+                                <option value="Mini">Mini</option>
+                                <option value="Basic">Basic</option>
+                                <option value="Standard">Standard</option>
+                                <option value="Premium">Premium</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 mb-1">Expiry Date</label>
+                            <input type="date" name="expiry_date" id="modalExpiryDate" class="w-full px-3 py-2 bg-slate-50 border rounded-lg">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 mb-1">Add/Remove Credits</label>
+                            <input type="number" name="credit_adj" placeholder="+/- Amount" class="w-full px-3 py-2 bg-slate-50 border rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 mb-1">Assigned API Key</label>
+                            <select name="assigned_key" id="modalAssignedKey" class="w-full px-3 py-2 bg-slate-50 border rounded-lg">
+                                <option value="">-- Use Pool (Default) --</option>
+                                {% if api_keys %}
+                                {% for k in api_keys %}
+                                <option value="{{ k.key_value }}">{{ k.label }}</option>
+                                {% endfor %}
+                                {% endif %}
+                            </select>
+                        </div>
                     </div>
                     <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
                         <h5 class="font-bold text-sm text-slate-700 mb-3">Custom Override</h5>
@@ -547,8 +575,10 @@ MODERN_DASHBOARD_HTML = """
                             <div><label class="text-[10px] font-bold text-slate-400">Cost (Pro)</label><input type="number" name="custom_cost_pro" id="modalCostPro" class="w-full mt-1 border rounded p-1.5 text-sm"></div>
                         </div>
                     </div>
-                    <div><label class="block text-xs font-bold text-slate-500 mb-1">Assigned API Key</label><select name="assigned_key" id="modalAssignedKey" class="w-full px-3 py-2 bg-slate-50 border rounded-lg"><option value="">-- Use Pool (Default) --</option>{% if api_keys %}{% for k in api_keys %}<option value="{{ k.key_value }}">{{ k.label }}</option>{% endfor %}{% endif %}</select></div>
-                    <div class="flex justify-end pt-4 border-t gap-3"><a id="btnDelete" href="#" onclick="return confirm('Delete user?')" class="px-4 py-2 text-red-500 hover:bg-red-50 rounded font-bold text-sm">Delete User</a><button type="submit" class="px-6 py-2 bg-primary text-white rounded hover:bg-indigo-600 font-bold shadow">Save Changes</button></div>
+                    <div class="flex justify-end pt-4 border-t gap-3">
+                        <a id="btnDelete" href="#" onclick="return confirm('Delete user?')" class="px-4 py-2 text-red-500 hover:bg-red-50 rounded font-bold text-sm">Delete User</a>
+                        <button type="submit" class="px-6 py-2 bg-primary text-white rounded hover:bg-indigo-600 font-bold shadow">Save Changes</button>
+                    </div>
                 </form>
             </div>
         </div>
@@ -622,6 +652,7 @@ MODERN_DASHBOARD_HTML = """
             document.getElementById('modalUsername').innerText = "Manage: " + user.username;
             document.getElementById('modalHiddenUsername').value = user.username;
             document.getElementById('modalPlan').value = user.plan;
+            document.getElementById('modalExpiryDate').value = user.expiry_date || "";
             document.getElementById('modalLimit').value = user.custom_limit || "";
             document.getElementById('modalCost2').value = user.custom_cost_2 || "";
             document.getElementById('modalCostPro').value = user.custom_cost_pro || "";
@@ -769,14 +800,18 @@ def add_user():
 def update_user_full():
     u = request.form['username']
     plan = request.form.get('plan')
+    expiry_date = request.form.get('expiry_date')  # បានបន្ថែម
     credit_adj = request.form.get('credit_adj')
     cl = request.form.get('custom_limit') or None
     c2 = request.form.get('custom_cost_2') or None
     cp = request.form.get('custom_cost_pro') or None
     ak = request.form.get('assigned_key') or None
+    
     conn = get_db()
-    conn.execute('''UPDATE users SET plan=?, custom_limit=?, custom_cost_2=?, custom_cost_pro=?, assigned_api_key=? WHERE username=?''', 
-                 (plan, cl, c2, cp, ak, u))
+    # បន្ថែម expiry_date ក្នុង SQL UPDATE
+    conn.execute('''UPDATE users SET plan=?, expiry_date=?, custom_limit=?, custom_cost_2=?, custom_cost_pro=?, assigned_api_key=? WHERE username=?''', 
+                 (plan, expiry_date, cl, c2, cp, ak, u))
+    
     if credit_adj:
         try: 
             conn.execute("UPDATE users SET credits = credits + ? WHERE username=?", (int(credit_adj), u))
@@ -1218,6 +1253,3 @@ def proxy_chk():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
-
-
-
